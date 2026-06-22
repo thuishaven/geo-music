@@ -31,6 +31,42 @@ does.
 See **[SPEC.md](SPEC.md)** for the full specification, data sources, architecture,
 and build plan.
 
+## Running the Phase 0 prototype
+
+A CLI that takes two places and creates a route-ordered Spotify playlist. Geo data
+comes from free, keyless services (OSRM routing + Nominatim geocoding); you only need
+Spotify credentials.
+
+1. **Create a Spotify app** at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
+   Add `http://127.0.0.1:8888/callback` to the app's **Redirect URIs**.
+2. **Configure:**
+   ```bash
+   cp .env.example .env   # then fill in SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET
+   npm install
+   ```
+3. **Run** (first run opens a browser link to authorize; the token is cached locally):
+   ```bash
+   npm start -- "Amsterdam" "Paris"
+   ```
+
+Output is an ordered playlist whose artists march geographically from start to end.
+
+> **Prototype tradeoffs** (see SPEC §7): MusicBrainz / Nominatim / OSRM are rate-limited
+> to ~1 req/s, so the CLI throttles itself and caps the number of places (`MAX_PLACES`).
+> Artist→place matching is fuzzy and sparse regions are skipped — gaps are expected.
+
+### Project layout
+
+```
+src/
+  index.ts            CLI entry
+  pipeline.ts         orchestrates route → places → artists → playlist
+  config.ts           env + tuning
+  geo/                routing (OSRM), geocoding (Nominatim), waypoint sampling
+  origin/             artist-origin lookup (MusicBrainz area search)
+  providers/          MusicProvider interface + Spotify implementation
+```
+
 ## License
 
 [MIT](LICENSE)
