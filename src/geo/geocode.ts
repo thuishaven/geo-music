@@ -1,7 +1,12 @@
 import { getJson } from "../util/http.js";
-import type { Coord } from "./types.js";
+import type { Coord, ResolvedPlace } from "./types.js";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org";
+
+// Ask Nominatim for English names so place/region/country strings match
+// MusicBrainz area names reliably across borders (e.g. "Belgium", not
+// "België / Belgique").
+const LANG = "&accept-language=en";
 
 interface NominatimSearchResult {
   lat: string;
@@ -11,7 +16,7 @@ interface NominatimSearchResult {
 
 /** Forward-geocode a free-text place name to coordinates. */
 export async function geocode(query: string): Promise<{ coord: Coord; displayName: string }> {
-  const url = `${NOMINATIM}/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+  const url = `${NOMINATIM}/search?q=${encodeURIComponent(query)}&format=json&limit=1${LANG}`;
   const results = await getJson<NominatimSearchResult[]>(url);
   const first = results[0];
   if (!first) throw new Error(`Could not geocode "${query}".`);
@@ -26,15 +31,23 @@ interface NominatimReverseResult {
 }
 
 /**
- * Reverse-geocode a coordinate to the most specific populated-place name
- * (city → town → village → municipality → county). Returns null if none found.
+ * Reverse-geocode a coordinate to a place with its region and country.
+ * The name is the most specific populated place (city → town → village …);
+ * region/country are used as fallback search levels. Returns null if no
+ * populated-place name can be derived.
  */
-export async function reverseToPlaceName(coord: Coord): Promise<string | null> {
-  // zoom=10 keeps results at roughly the city/town level.
-  const url = `${NOMINATIM}/reverse?lat=${coord.lat}&lon=${coord.lon}&format=json&zoom=10&addressdetails=1`;
+export async function reverseToPlace(coord: Coord): Promise<ResolvedPlace | null> {
+  // zoom=10 keeps the primary result at roughly the city/town level.
+  const url = `${NOMINATIM}/reverse?lat=${coord.lat}&lon=${coord.lon}&format=json&zoom=10&addressdetails=1${LANG}`;
   const result = await getJson<NominatimReverseResult>(url);
   const a = result.address ?? {};
-  return (
-    a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state ?? null
-  );
+  const name =
+    a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state ?? null;
+  if (!name) return null;
+  const region = a.state ?? a.county ?? a.state_district ?? null;
+  return {
+    name,
+    region: region && region !== name ? region : null,
+    country: a.country ?? null,
+  };
 }
