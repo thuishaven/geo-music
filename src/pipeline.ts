@@ -4,6 +4,7 @@ import { getRoute } from "./geo/route.js";
 import { sampleWaypoints } from "./geo/waypoints.js";
 import type { ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace } from "./origin/musicbrainz.js";
+import { resolveSegments, type Segment } from "./segments.js";
 import type { MusicProvider, ProviderArtist, ProviderTrack } from "./providers/types.js";
 
 /** Rough average song length, used to estimate how many artists fill a slice. */
@@ -13,7 +14,7 @@ export interface PipelineResult {
   playlistId: string;
   url: string;
   trackCount: number;
-  placeCount: number;
+  segmentCount: number;
   targetMinutes: number;
   actualMinutes: number;
 }
@@ -29,26 +30,20 @@ interface TaggedTrack {
 }
 
 /**
- * Gather candidate artists for a place, widening city → region → country only
+ * Gather candidate artists for a segment, widening through its levels only
  * while the pool is too small to fill `budgetMs`, then rank the whole pool by
- * provider popularity (the key quality fix: famous local acts beat name-match
- * orchestras). Returns artists most-popular-first, each tagged with its level.
+ * provider popularity (so famous local acts beat name-match orchestras).
  */
 async function rankedCandidates(
   provider: MusicProvider,
-  place: ResolvedPlace,
+  segment: Segment,
   budgetMs: number,
   seen: Set<string>,
 ): Promise<Array<{ artist: ProviderArtist; level: string }>> {
-  const levels = [
-    { label: "city", query: place.name },
-    ...(place.region ? [{ label: "region", query: place.region }] : []),
-    ...(place.country ? [{ label: "country", query: place.country }] : []),
-  ];
-
   const pool: Array<{ artist: ProviderArtist; level: string }> = [];
-  for (const level of levels) {
-    const artists = await findArtistsByPlace(level.query, config.artistCandidatesPerPlace);
+  for (const level of segment.levels) {
+    const artists =
+      level.mbArtists ?? (await findArtistsByPlace(level.query, config.artistCandidatesPerPlace));
     for (const a of artists) {
       const match = await provider.searchArtist(a.name);
       if (!match || seen.has(match.id)) continue;
@@ -63,14 +58,14 @@ async function rankedCandidates(
   return pool;
 }
 
-/** Build the tracklist for one place: fill its time slice from ranked artists. */
-async function tracksForPlace(
+/** Build the tracklist for one segment: fill its time slice from ranked artists. */
+async function tracksForSegment(
   provider: MusicProvider,
-  place: ResolvedPlace,
+  segment: Segment,
   budgetMs: number,
   seen: Set<string>,
 ): Promise<TaggedTrack[]> {
-  const candidates = await rankedCandidates(provider, place, budgetMs, seen);
+  const candidates = await rankedCandidates(provider, segment, budgetMs, seen);
 
   // Fetch top tracks for the most popular artists until the budget is covered.
   const perArtist: Array<{ tracks: ProviderTrack[]; level: string }> = [];
@@ -83,8 +78,8 @@ async function tracksForPlace(
     estMs += tracks.reduce((s, t) => s + t.durationMs, 0);
   }
 
-  // Interleave breadth-first (every artist's #1 before anyone's #2) so a place
-  // gets variety; artists are already in popularity order.
+  // Interleave breadth-first (every artist's #1 before anyone's #2) for variety;
+  // artists are already in popularity order.
   const tagged: TaggedTrack[] = [];
   const depth = Math.max(0, ...perArtist.map((p) => p.tracks.length));
   for (let i = 0; i < depth; i++) {
@@ -106,8 +101,9 @@ async function tracksForPlace(
 
 /**
  * Build a route-ordered playlist from `from` to `to`, sized to the drive time.
- * Each place gets an equal time slice filled with its most popular local
- * artists, widening to region/country only when a place is too sparse.
+ * Places are merged into segments (so a region spanning several villages is one
+ * continuous block), each segment gets a time slice proportional to how much of
+ * the route it covers, filled with its most popular local artists.
  */
 export async function buildPlaylist(
   provider: MusicProvider,
@@ -135,23 +131,30 @@ export async function buildPlaylist(
     if (place && places[places.length - 1]?.name !== place.name) places.push(place);
   }
   if (places.length === 0) throw new Error("No places resolved along the route.");
-  console.log(`  Places in travel order: ${places.map((p) => p.name).join(" → ")}`);
 
-  const perPlaceMs = targetMs / places.length;
+  // Merge consecutive same-area places into segments; weight time by coverage.
+  const segments = await resolveSegments(places);
+  console.log(
+    `  Segments in travel order: ` +
+      segments.map((s) => (s.span > 1 ? `${s.label}×${s.span}` : s.label)).join(" → "),
+  );
+  const msPerPlace = targetMs / places.length;
+
   const playlist: ProviderTrack[] = [];
   const seen = new Set<string>();
 
-  for (const place of places) {
-    const picked = await tracksForPlace(provider, place, perPlaceMs, seen);
+  for (const segment of segments) {
+    const budgetMs = msPerPlace * segment.span;
+    const picked = await tracksForSegment(provider, segment, budgetMs, seen);
     playlist.push(...picked.map((p) => p.track));
 
     if (!picked.length) {
-      console.log(`  ${place.name}: no playable tracks (skipped)`);
+      console.log(`  ${segment.label}: no playable tracks (skipped)`);
       continue;
     }
     const levels = [...new Set(picked.map((p) => p.level))].join("+");
     const placeMs = picked.reduce((s, p) => s + p.track.durationMs, 0);
-    console.log(`  ${place.name}: ${picked.length} track(s), ~${minutes(placeMs)} min (${levels})`);
+    console.log(`  ${segment.label}: ${picked.length} track(s), ~${minutes(placeMs)} min (${levels})`);
   }
 
   if (playlist.length === 0) {
@@ -168,7 +171,7 @@ export async function buildPlaylist(
     playlistId,
     url: provider.playlistUrl(playlistId),
     trackCount: playlist.length,
-    placeCount: places.length,
+    segmentCount: segments.length,
     targetMinutes: minutes(targetMs),
     actualMinutes: minutes(actualMs),
   };

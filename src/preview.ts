@@ -4,15 +4,16 @@ import { getRoute } from "./geo/route.js";
 import { sampleWaypoints } from "./geo/waypoints.js";
 import type { ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace } from "./origin/musicbrainz.js";
+import { resolveSegments } from "./segments.js";
 
 /**
  * Dry-run preview: runs the provider-agnostic half of the pipeline (route →
- * places → local artists, with city → region → country fallback) and prints
- * what the playlist would be built from. Needs no Spotify credentials.
+ * places → merged segments → local artists) and prints what the playlist would
+ * be built from. Needs no Spotify credentials.
  *
  * It cannot rank by popularity (that needs a provider), so artists are shown in
  * MusicBrainz relevance order with their scores — useful only to confirm that
- * each place resolves to *some* real artists at *some* level.
+ * each segment resolves to real artists.
  */
 export async function previewRoute(from: string, to: string): Promise<void> {
   console.log(`\nDRY RUN — ${from} → ${to}\n`);
@@ -39,32 +40,31 @@ export async function previewRoute(from: string, to: string): Promise<void> {
     return;
   }
 
-  const perPlaceMin = Math.round(targetMin / places.length);
-  console.log(`Places in travel order (${places.length}, ~${perPlaceMin} min each):\n`);
+  const segments = await resolveSegments(places);
+  console.log(
+    `Segments in travel order (${segments.length} from ${places.length} places):\n`,
+  );
 
-  for (const place of places) {
-    const levels = [
-      { label: "city", query: place.name },
-      ...(place.region ? [{ label: `region: ${place.region}`, query: place.region }] : []),
-      ...(place.country ? [{ label: `country: ${place.country}`, query: place.country }] : []),
-    ];
+  for (const segment of segments) {
+    const minutesEach = Math.round((targetMin * segment.span) / places.length);
+    const spanTag = segment.span > 1 ? ` ×${segment.span}` : "";
 
-    let printed = false;
-    for (const level of levels) {
-      const artists = await findArtistsByPlace(level.query, 6);
+    // Show the first level that yields artists (mirrors the real widening).
+    let line = `    — no artists at any level`;
+    let levelTag = "";
+    for (const level of segment.levels) {
+      const artists = level.mbArtists ?? (await findArtistsByPlace(level.query, 6));
       if (artists.length) {
-        const names = artists.map((a) => `${a.name} (${a.score})`).join(", ");
-        const tag = level.label === "city" ? "" : `  [fallback → ${level.label}]`;
-        console.log(`  ${place.name}${tag}\n    ${names}\n`);
-        printed = true;
+        line = "    " + artists.slice(0, 6).map((a) => `${a.name} (${a.score})`).join(", ");
+        levelTag = level.label === "city" ? "" : `  [${level.label}]`;
         break;
       }
     }
-    if (!printed) console.log(`  ${place.name}\n    — no artists at any level\n`);
+    console.log(`  ${segment.label}${spanTag}  (~${minutesEach} min)${levelTag}\n${line}\n`);
   }
 
   console.log(
     "Note: a real run ranks these by Spotify popularity and fills each slice by time;\n" +
-      "this preview only confirms artist availability per place/level.\n",
+      "this preview only confirms artist availability per segment.\n",
   );
 }

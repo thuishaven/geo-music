@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const result = await buildPlaylist(provider, from, to);
 
   console.log(
-    `\n✓ Created playlist: ${result.trackCount} tracks across ${result.placeCount} places, ` +
+    `\n✓ Created playlist: ${result.trackCount} tracks across ${result.segmentCount} segments, ` +
       `~${result.actualMinutes} min (target ~${result.targetMinutes} min).\n` +
       `  ${result.url}\n`,
   );
