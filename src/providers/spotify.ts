@@ -36,6 +36,12 @@ export class SpotifyProvider implements MusicProvider {
   private userId: string | null = null;
 
   async authenticate(): Promise<void> {
+    if (!config.spotify.clientId || !config.spotify.clientSecret) {
+      throw new Error(
+        "Missing SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET. Copy .env.example to .env " +
+          "and fill them in (or use --dry-run, which needs no Spotify credentials).",
+      );
+    }
     this.token = (await this.loadCachedToken()) ?? (await this.runOAuthFlow());
     this.userId = await this.fetchUserId();
   }

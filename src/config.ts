@@ -21,8 +21,9 @@ function num(name: string, fallback: number): number {
 
 export const config = {
   spotify: {
-    clientId: env("SPOTIFY_CLIENT_ID"),
-    clientSecret: env("SPOTIFY_CLIENT_SECRET"),
+    // Not required for --dry-run; validated in SpotifyProvider.authenticate().
+    clientId: process.env.SPOTIFY_CLIENT_ID ?? "",
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET ?? "",
     redirectUri: env("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"),
     market: env("SPOTIFY_MARKET", "NL"),
   },
