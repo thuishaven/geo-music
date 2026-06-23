@@ -52,9 +52,16 @@ A static, route-ordered playlist generator.
   places along the route, in travel order.
 - Two playlist targets behind one interface: **Spotify first**, **Apple Music second**.
 
+**In scope (added)**
+- **Playlist length ≈ drive time.** The total play time targets the route's driving
+  duration (× `ROUTE_DURATION_SCALE`); each place gets an equal slice of that budget,
+  filled with local artists' top tracks. So a 6-hour drive yields ~6 hours of music.
+
 **Out of scope for v1**
 - Live/GPS reactivity (music changing as you physically move).
-- Matching song *duration* to *time spent* in each region (pacing).
+- **Per-song pacing** — syncing an individual song to the moment you are physically in
+  that region. v1 matches the *total* length to the drive, not song-by-song position;
+  true pacing needs the live mode.
 - A self-built artist-origin catalog (we query live APIs first — see §4).
 - A polished consumer UI. The first proof can be a script / minimal web flow.
 
@@ -228,8 +235,10 @@ idea is validated. Everything else is scaling and polish.
    (better data, paid/keyed). Pick for Phase 1.
 4. **Waypoint density** (`N` km between samples) and how to decide a place is
    "notable enough" to include.
-5. **Ranking & size**: how many artists/tracks per place; distance radius that
-   expands until it finds *something*; min popularity threshold.
+5. **Ranking & size**: playlist length now targets drive time with an equal slice per
+   place (implemented). Still open: weight slices by *dwell time* (traffic/stops) or by
+   an area's *artist density*; rank artists by Spotify popularity rather than MusicBrainz
+   relevance; a distance radius that expands until it finds *something*.
 6. **"Available on Thuishaven" interpretation** (§6): confirm it means a Thuishaven
    `media` pattern, not some other integration.
 7. **Domain / subdomain** for the public OAuth-callback URL.

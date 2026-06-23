@@ -183,14 +183,21 @@ export class SpotifyProvider implements MusicProvider {
     return hit ? { id: hit.id, name: hit.name, popularity: hit.popularity } : null;
   }
 
-  async getTopTrack(artistId: string): Promise<ProviderTrack | null> {
+  async getTopTracks(artistId: string, limit: number): Promise<ProviderTrack[]> {
     const data = await this.api<{
-      tracks: Array<{ uri: string; name: string; artists: Array<{ name: string }> }>;
+      tracks: Array<{
+        uri: string;
+        name: string;
+        duration_ms: number;
+        artists: Array<{ name: string }>;
+      }>;
     }>(`/artists/${artistId}/top-tracks?market=${config.spotify.market}`);
-    const top = data.tracks[0];
-    return top
-      ? { uri: top.uri, name: top.name, artistName: top.artists[0]?.name ?? "" }
-      : null;
+    return data.tracks.slice(0, limit).map((t) => ({
+      uri: t.uri,
+      name: t.name,
+      artistName: t.artists[0]?.name ?? "",
+      durationMs: t.duration_ms,
+    }));
   }
 
   async createPlaylist(name: string, description: string): Promise<string> {

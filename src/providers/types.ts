@@ -15,6 +15,8 @@ export interface ProviderTrack {
   uri: string;
   name: string;
   artistName: string;
+  /** Track length in milliseconds, used to size the playlist to the drive. */
+  durationMs: number;
 }
 
 export interface MusicProvider {
@@ -27,8 +29,11 @@ export interface MusicProvider {
   /** Resolve an artist name to the best catalog match, or null if not found. */
   searchArtist(name: string): Promise<ProviderArtist | null>;
 
-  /** The artist's most popular playable track, or null if none. */
-  getTopTrack(artistId: string): Promise<ProviderTrack | null>;
+  /**
+   * The artist's most popular playable tracks (up to `limit`), most popular
+   * first. Returns fewer (or none) if the artist has fewer playable tracks.
+   */
+  getTopTracks(artistId: string, limit: number): Promise<ProviderTrack[]>;
 
   /** Create an empty playlist and return its id. */
   createPlaylist(name: string, description: string): Promise<string>;

@@ -49,11 +49,16 @@ Spotify credentials.
    npm start -- "Amsterdam" "Paris"
    ```
 
-Output is an ordered playlist whose artists march geographically from start to end.
+Output is an ordered playlist whose artists march geographically from start to end,
+**sized so its total play time is roughly the driving time** — each place along the
+route gets an equal slice of that budget. Tune length with `ROUTE_DURATION_SCALE`
+(1.0 ≈ matches the drive).
 
 > **Prototype tradeoffs** (see SPEC §7): MusicBrainz / Nominatim / OSRM are rate-limited
 > to ~1 req/s, so the CLI throttles itself and caps the number of places (`MAX_PLACES`).
 > Artist→place matching is fuzzy and sparse regions are skipped — gaps are expected.
+> Length matches the *total* drive time, but song timing is not synced to your live
+> position (that needs the live mode — out of scope for v1).
 
 ### Project layout
 
