@@ -211,6 +211,7 @@ export class SpotifyProvider implements MusicProvider {
         uri: string;
         name: string;
         duration_ms: number;
+        popularity: number;
         artists: Array<{ name: string; id: string }>;
       }>;
     }>(`/artists/${artistId}/top-tracks?market=${config.spotify.market}`);
@@ -220,6 +221,7 @@ export class SpotifyProvider implements MusicProvider {
       artistName: t.artists[0]?.name ?? "",
       artistIds: t.artists.map((a) => a.id),
       artistNames: t.artists.map((a) => a.name),
+      popularity: t.popularity,
       durationMs: t.duration_ms,
     }));
   }

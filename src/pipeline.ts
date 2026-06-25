@@ -149,7 +149,9 @@ async function tracksForSegment(
       if (classicalUsed >= config.maxClassicalPerSegment) continue;
       classicalUsed++;
     }
-    const tracks = await provider.getTopTracks(c.artist.id, config.maxTracksPerArtist);
+    const tracks = (await provider.getTopTracks(c.artist.id, config.maxTracksPerArtist)).filter(
+      (t) => t.popularity >= config.minTrackPopularity,
+    );
     if (!tracks.length) continue;
     perArtist.push({ tracks, level: c.level });
     estMs += tracks.reduce((s, t) => s + t.durationMs, 0);

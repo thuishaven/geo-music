@@ -21,6 +21,8 @@ export interface ProviderTrack {
   artistIds: string[];
   /** All credited artist names (stable, unlike genres) for name-based vetting. */
   artistNames: string[];
+  /** Track popularity (0-100); used to drop novelty/low-quality top tracks. */
+  popularity: number;
   /** Track length in milliseconds, used to size the playlist to the drive. */
   durationMs: number;
 }

@@ -36,6 +36,9 @@ export const config = {
   // Drop artists below this Spotify popularity (0-100) to cut obscure noise
   // (bird recordings, audition-show filler, zero-play bootlegs).
   minArtistPopularity: num("MIN_ARTIST_POPULARITY", 25),
+  // Drop individual tracks below this Spotify popularity, catching novelty/
+  // narration top tracks from otherwise-popular artists (track pop is reliable).
+  minTrackPopularity: num("MIN_TRACK_POPULARITY", 20),
   // Cap on tracks taken from a single artist, so no one act dominates a place.
   maxTracksPerArtist: num("MAX_TRACKS_PER_ARTIST", 2),
   // Cap on classical/opera artists per segment. 0 = exclude classical entirely
