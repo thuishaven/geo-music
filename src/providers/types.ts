@@ -17,6 +17,10 @@ export interface ProviderTrack {
   uri: string;
   name: string;
   artistName: string;
+  /** All credited artist ids, so co-credits (orchestras, narrators) can be vetted. */
+  artistIds: string[];
+  /** All credited artist names (stable, unlike genres) for name-based vetting. */
+  artistNames: string[];
   /** Track length in milliseconds, used to size the playlist to the drive. */
   durationMs: number;
 }
@@ -36,6 +40,9 @@ export interface MusicProvider {
    * first. Returns fewer (or none) if the artist has fewer playable tracks.
    */
   getTopTracks(artistId: string, limit: number): Promise<ProviderTrack[]>;
+
+  /** Look up genres (lowercased) for a batch of artist ids, keyed by id. */
+  getArtistGenres(ids: string[]): Promise<Map<string, string[]>>;
 
   /** Create an empty playlist and return its id. */
   createPlaylist(name: string, description: string): Promise<string>;

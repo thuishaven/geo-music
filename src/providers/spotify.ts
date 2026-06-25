@@ -211,15 +211,31 @@ export class SpotifyProvider implements MusicProvider {
         uri: string;
         name: string;
         duration_ms: number;
-        artists: Array<{ name: string }>;
+        artists: Array<{ name: string; id: string }>;
       }>;
     }>(`/artists/${artistId}/top-tracks?market=${config.spotify.market}`);
     return data.tracks.slice(0, limit).map((t) => ({
       uri: t.uri,
       name: t.name,
       artistName: t.artists[0]?.name ?? "",
+      artistIds: t.artists.map((a) => a.id),
+      artistNames: t.artists.map((a) => a.name),
       durationMs: t.duration_ms,
     }));
+  }
+
+  async getArtistGenres(ids: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      const data = await this.api<{ artists: Array<{ id: string; genres?: string[] } | null> }>(
+        `/artists?ids=${batch.join(",")}`,
+      );
+      for (const a of data.artists) {
+        if (a) out.set(a.id, (a.genres ?? []).map((g) => g.toLowerCase()));
+      }
+    }
+    return out;
   }
 
   async createPlaylist(name: string, description: string): Promise<string> {

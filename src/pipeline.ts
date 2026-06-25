@@ -61,6 +61,27 @@ function isNonMusicTitle(name: string): boolean {
 }
 
 /**
+ * Classical/orchestral signals from STABLE data (artist names + track titles),
+ * because Spotify's genre tags are unreliable — the same request returns
+ * "classical" one moment and [] the next. Names and titles never flap.
+ */
+// A credited artist that is plainly a classical ensemble. "symphony orchestra"
+// (not bare "orchestra") avoids false hits like Electric Light Orchestra.
+const ENSEMBLE_NAME =
+  /\b(symphony orchestra|radio symphony|philharmoni|sinfonie|sinfonieorchester|staatskapelle|kammerorchester|chamber orchestra|baroque orchestra|festival orchestra|orchestre|opera|opernhaus|concertgebouw|conservatoire|consort|cappella|capella|chœur)\b/i;
+
+// Catalogue numbers (BWV, Op. …), key signatures, opera acts, movement names.
+const CLASSICAL_TITLE =
+  /\b(bwv|hwv|kv|woo|rv|wd|op)\.?\s*\d|\bno\.?\s*\d+\s+in\s+[a-g]\b|\bin\s+[a-g](-|\s)?(sharp|flat)?\s*(major|minor)\b|\b(act|akt)\s+[ivx]+\s*:|\b(allegro|andante|adagio|presto|largo|moderato|scherzo|menuetto|gymnop|nocturne|barcarolle|berceuse|pavane|habanera|requiem|lacrimosa|kyrie|magnificat|cantata)\b/i;
+
+function looksClassical(track: ProviderTrack): boolean {
+  return (
+    CLASSICAL_TITLE.test(track.name) ||
+    track.artistNames.some((n) => ENSEMBLE_NAME.test(n))
+  );
+}
+
+/**
  * Normalize a track title so the same recording collapses regardless of credit
  * or version: drop "- Radio Edit"/"- Live" suffixes and "(feat. …)" parts, then
  * strip to alphanumerics. Used to de-duplicate across the whole playlist.
@@ -144,14 +165,27 @@ async function tracksForSegment(
     }
   }
 
+  // Vet each track by STABLE signals (credited names + title) plus genres where
+  // available. Genre data is flaky, so names/titles are the primary defence.
+  const creditIds = [...new Set(tagged.flatMap((t) => t.track.artistIds))];
+  const creditGenres = await provider.getArtistGenres(creditIds);
+  const excludeClassical = config.maxClassicalPerSegment === 0;
+  const hasBadCredit = (t: ProviderTrack): boolean => {
+    if (excludeClassical && looksClassical(t)) return true;
+    return t.artistIds.some((id) => {
+      const g = creditGenres.get(id) ?? [];
+      return isNonMusicArtist(g) || (excludeClassical && isClassical(g));
+    });
+  };
+
   // Fill the slice (always take at least one track if available), skipping any
   // track whose title already appears anywhere in the playlist.
   const picked: TaggedTrack[] = [];
   let placeMs = 0;
   for (const t of tagged) {
     if (placeMs >= budgetMs && picked.length > 0) break;
-    // Skip audiobook/audio-drama chapters that slip past the artist genre check.
-    if (isNonMusicTitle(t.track.name)) continue;
+    // Skip audiobook/audio-drama chapters and tracks with non-music co-credits.
+    if (isNonMusicTitle(t.track.name) || hasBadCredit(t.track)) continue;
     const key = trackKey(t.track.name);
     if (seenTracks.has(key)) continue;
     seenTracks.add(key);
