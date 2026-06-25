@@ -38,9 +38,9 @@ export const config = {
   minArtistPopularity: num("MIN_ARTIST_POPULARITY", 25),
   // Cap on tracks taken from a single artist, so no one act dominates a place.
   maxTracksPerArtist: num("MAX_TRACKS_PER_ARTIST", 2),
-  // Cap on classical/opera artists per segment, so country fallback doesn't
-  // drown a region in composers and ensembles.
-  maxClassicalPerSegment: num("MAX_CLASSICAL_PER_SEGMENT", 2),
+  // Cap on classical/opera artists per segment. 0 = exclude classical entirely
+  // (default — it's mostly country-level tagging noise and off-vibe for a drive).
+  maxClassicalPerSegment: num("MAX_CLASSICAL_PER_SEGMENT", 0),
   contact: env("CONTACT", "geo-music (https://github.com/thuishaven/geo-music)"),
 };
 
