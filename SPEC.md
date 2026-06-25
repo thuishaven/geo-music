@@ -81,25 +81,45 @@ step differs per music service. This reflects what Phase 0 actually implements.
 4. **Merge into segments.** Probe each place's city level once; consecutive places that
    resolve to the same effective area (e.g. several villages in one region) merge into a
    single **segment** with a `span` = how many places it covers.
-5. **Find local artists per segment.** MusicBrainz `area:` search, widening
-   city → region → country **only while the segment is under-filled**.
-6. **Rank & filter.** Resolve candidates on the music service, **rank by popularity**,
-   drop artists below a popularity floor, drop non-music acts (audiobooks/children's),
-   cap classical acts per segment.
-7. **Fill time slices.** Each segment gets a slice of the drive-time budget proportional
-   to its `span`, filled from the highest-popularity artists' top tracks; tracks are
-   de-duplicated playlist-wide by normalized title.
-8. **Assemble in travel order** → create the playlist in the chosen service.
+5. **Gather candidates per segment.** MusicBrainz `area:` search over **local** levels
+   (city/region, with early-stop) **plus always the country level** with a deeper pull
+   (`COUNTRY_CANDIDATES`) — famous nationals sit below a wall of classical composers in
+   MusicBrainz, so country needs digging. Cached per area query across the route.
+6. **Resolve each candidate (tiered, precision-first).** (a) strict name match — accept a
+   Spotify result only if its name matches the MusicBrainz name (exact legends pass,
+   famous-stranger hijacks don't); (b) on failure, the artist's MusicBrainz-stored
+   **Spotify link** for an exact resolution (bounded per segment); (c) else a **guarded
+   loose** match — the top fuzzy result, accepted only if its popularity ≤
+   `LOOSE_FALLBACK_MAX_POP` so a superstar can't hijack an obscure local.
+7. **Rank & filter.** Rank the whole pool by Spotify **popularity** (well-known songs
+   lead, blending local + national); drop artists/tracks below popularity floors, drop
+   non-music (audiobooks/children's) and classical (excluded by default — see §3a).
+8. **Fill time slices.** Each segment gets a slice of the drive-time budget proportional
+   to its `span`, filled from the ranked tracks; tracks are de-duplicated playlist-wide
+   by normalized title.
+9. **Assemble in travel order** → create the playlist in the chosen service.
 
 ```
 A,B ─▶ route(+duration) ─▶ waypoints ─▶ reverse-geocode ─▶ merge into segments
                                                                     │
-                              per segment: MusicBrainz area search (city→region→country)
+              per segment: MB area search — local (city/region) + always country (deep)
                                                                     │
-                          rank by popularity · floor · non-music & classical filters
+        resolve tiered: strict name → MB Spotify-link → guarded loose (pop ceiling)
                                                                     │
-                  fill each segment's time slice (∝ span) · dedup ─▶ create playlist
+            rank by popularity · floors · non-music & classical & dedup filters
+                                                                    │
+                  fill each segment's time slice (∝ span) ─▶ create playlist
 ```
+
+### 3a. Why classical detection uses names/titles, not genres
+
+Spotify's genre tags are unreliable — the same `/artists` request returns
+`["classical"]` one moment and `[]` the next (genres are being deprecated). So
+classical/opera is detected from **stable** signals instead: credited artist *names*
+("Symphony Orchestra", "Philharmonic", "Orchestre") and *title* patterns (catalogue
+numbers like BWV/Op., key signatures like "in C-Sharp Minor", movement names like
+Allegro/Gymnopédie). All credited artists on a track are vetted, not just the matched
+one — so a narrated symphonic piece credited to an orchestra + narrator is caught.
 
 ---
 
@@ -241,12 +261,15 @@ ranking, and OAuth all landed in Phase 0. Remaining Phase-1-ish polish lives in 
    recipe; start `experimental`, promote to `stable` after validation.
 
 ### Known tradeoffs (as built)
-- MusicBrainz / Nominatim / OSRM rate limit (~1 req/s) → the CLI self-throttles per
-  host; long routes take a few minutes.
-- `area:` search is name-based and fuzzy → mitigated by popularity ranking + floor +
-  non-music/classical filters, but **sparse regions return a geographically loose mix**
-  (the open data-quality problem, §8).
-- MusicBrainz → Spotify name matching is lossy → occasional wrong matches remain.
+- MusicBrainz / Nominatim / OSRM rate limit (~1 req/s) and a deep country pull → a run
+  takes a few minutes.
+- **Sparse rural/alpine regions under-fill.** Resolution is precision-first (strict +
+  guarded loose), so segments with few correctly-resolvable artists come up short. A
+  music-rich route fills far better than an Alpine one. Tunable via
+  `LOOSE_FALLBACK_MAX_POP` (fullness vs. precision).
+- **MusicBrainz country results are classical-dominated.** `area:"Italy"`/`"Austria"`
+  return composers first; the deep country pull + classical exclusion + popularity
+  ranking surface the recognizable pop nationals (Mina, Falco, Hallyday).
 - Playlist length tracks the *total* drive, not per-song position (no live pacing).
 
 ---
@@ -256,15 +279,22 @@ ranking, and OAuth all landed in Phase 0. Remaining Phase-1-ish polish lives in 
 **Resolved in Phase 0**
 - *Tech stack*: TypeScript / Node 20. ✅
 - *Routing/geocoding provider*: OSRM + Nominatim (keyless). ✅
-- *Ranking*: by Spotify popularity, with floor + filters. ✅
+- *Ranking & blend*: popularity-ranked blend of local + regional + national; well-known
+  songs lead. ✅
+- *Wrong matches*: tiered resolution (strict name → MB Spotify-link → guarded loose with
+  a popularity ceiling) killed the famous-stranger hijack (e.g. "MOLLY" → Molly Santana,
+  Drake-in-Tyrol). ✅
 - *Playlist size*: targets drive time, per-segment slice ∝ route coverage. ✅
 
 **Still open**
-1. **Sparse-region incoherence (the big one).** Sparse rural/alpine areas fall back to
-   region/country and return a loose, sometimes off-geography mix. This is the
-   artist-origin **data-quality** problem flagged in §1 as the only real moat. Options:
-   a stricter floor at country level; capping a fallback segment's budget; or building a
-   better origin source (bulk MusicBrainz + enrichment) — the deferred "own catalog".
+1. **Sparse-region recall (the big one).** The wrong-match noise is gone, but sparse
+   rural/alpine areas now *under-fill* — there simply aren't many correctly-resolvable
+   local artists, and famous nationals are tagged at country level behind a classical
+   wall. The deep country pull helps; the real ceiling is the artist-origin
+   **data-quality** problem flagged in §1 as the only moat. Options: build a better
+   origin source (bulk MusicBrainz + enrichment, the deferred "own catalog"); a
+   notion of *scene/vibe* (what a place is musically known for) alongside *origin*;
+   or accept shorter-but-correct playlists on sparse routes.
 2. **Canonical "from" rule** (§4): birthplace/formation vs current base — still relying
    on MusicBrainz's `area:` as-is.
 3. **Slice weighting**: currently ∝ number of places merged; could weight by *dwell

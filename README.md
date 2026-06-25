@@ -16,20 +16,46 @@ does.
 
 ## How it works
 
-1. **Route** A → B (OSRM) and sample waypoints along the way.
+1. **Route** A → B (OSRM) and sample waypoints along the way; the drive duration sizes
+   the playlist.
 2. **Reverse-geocode** each waypoint to a place with its region + country (Nominatim).
 3. **Merge** consecutive places that resolve to the same area into segments, each
    weighted by how much of the drive it covers.
-4. **Find local artists** per segment via [MusicBrainz](https://musicbrainz.org/) area
-   search, widening city → region → country only when a place is too sparse.
-5. **Rank by Spotify popularity**, drop obscure/non-music acts, pick top tracks, and
-   **fill each segment's time slice** so the playlist's length ≈ the drive time.
-6. **Assemble in travel order** → a playlist in your music service (Spotify; Apple
+4. **Find artists** per segment via [MusicBrainz](https://musicbrainz.org/) area search —
+   gathering **local** (city/region) acts *and always the* **country** *level* (deeper
+   pull, since famous nationals sit below a wall of classical composers in MusicBrainz).
+5. **Resolve each artist on Spotify** in precision order — see below — then **rank the
+   whole pool by popularity** so well-known songs lead, blending local and national.
+6. **Fill each segment's time slice** with the ranked tracks (length ≈ drive time) and
+   **assemble in travel order** → a playlist in your music service (Spotify; Apple
    Music next).
 
-Quality filters applied along the way: a popularity floor, per-segment cap on classical
-acts, removal of audiobooks/audio-dramas/children's spoken word, and playlist-wide track
-de-duplication. All are tunable via env (see `.env.example`).
+### Resolving artists correctly (avoiding wrong matches)
+
+MusicBrainz gives candidate *names*; resolving them to Spotify naively lets a famous
+stranger hijack an obscure local ("MOLLY" → "Molly Santana"). So each candidate is
+resolved in tiers:
+
+1. **Strict name match** — accept a Spotify result only if its name matches the
+   MusicBrainz name (so exact legends like *Mina* pass, hijacks don't).
+2. **MusicBrainz Spotify-link** — if strict fails, use the artist's MB-stored Spotify
+   link for an exact resolution (bounded per segment; each lookup is rate-limited).
+3. **Guarded loose fallback** — otherwise take the top fuzzy result, but only if its
+   popularity is at/below `LOOSE_FALLBACK_MAX_POP`, so a superstar can't hijack a local.
+
+### Quality filters
+
+- **Popularity floors** on both artist and track (drop obscure noise / novelty cuts).
+- **Classical/opera excluded** by default — detected from *stable* signals (credited
+  artist names like "Symphony Orchestra", and title patterns like BWV/Op./"in C-Sharp
+  Minor"), because Spotify's genre tags are unreliable (the same request flips between
+  `classical` and `[]`).
+- **Non-music removed** — audiobooks, audio-dramas, children's spoken word (by genre,
+  chapter-style titles, and non-music co-credits like narrators).
+- **Track de-duplication** across the whole playlist (normalized title, so the same
+  recording can't reappear via a different credit or remix).
+
+All thresholds are tunable via env (see the table below and `.env.example`).
 
 ## Status & roadmap
 
@@ -89,18 +115,27 @@ npm start -- --dry-run "Amsterdam" "Paris"
 | `ROUTE_DURATION_SCALE` | `1.0` | Playlist length vs. drive time (0.8 = shorter, 1.2 = longer) |
 | `WAYPOINT_INTERVAL_KM` | `50` | Distance between sampled waypoints |
 | `MAX_PLACES` | `12` | Cap on places (raise for long, cross-country routes) |
-| `ARTIST_CANDIDATES_PER_PLACE` | `25` | Candidates considered before ranking |
+| `ARTIST_CANDIDATES_PER_PLACE` | `25` | Candidates per local (city/region) level |
+| `COUNTRY_CANDIDATES` | `45` | Deeper pull at country level (digs past classical to reach nationals) |
 | `MIN_ARTIST_POPULARITY` | `25` | Drop artists below this Spotify popularity |
+| `MIN_TRACK_POPULARITY` | `20` | Drop individual tracks below this (novelty/narration cuts) |
 | `MAX_TRACKS_PER_ARTIST` | `2` | Cap tracks from one artist |
-| `MAX_CLASSICAL_PER_SEGMENT` | `2` | Cap classical/opera acts per segment |
+| `MAX_CLASSICAL_PER_SEGMENT` | `0` | Classical/opera acts per segment (0 = exclude entirely) |
+| `LOOSE_FALLBACK_MAX_POP` | `55` | Popularity ceiling for loose matches (lower = stricter, higher = fuller) |
+| `USE_MB_LINKS` / `MAX_LINK_LOOKUPS` | `true` / `6` | Use MusicBrainz Spotify-link fallback, bounded per segment |
 | `SPOTIFY_MARKET` | `NL` | Market for playable top tracks |
 
-> **Known limitations.** MusicBrainz / Nominatim / OSRM are rate-limited to ~1 req/s, so
-> the CLI throttles itself — long routes take a few minutes. **Sparse rural/alpine
-> regions** (few or no locally-tagged artists) fall back to region/country and can return
-> a geographically loose mix — MusicBrainz's `area:` tagging is thin there. Playlist
-> length matches the *total* drive, but a song is not synced to your live position (that
-> needs the live mode, out of scope for v1).
+The two dials worth knowing: **`LOOSE_FALLBACK_MAX_POP`** trades fullness vs. precision
+(how readily an unmatched name accepts a fuzzy result), and **`COUNTRY_CANDIDATES`**
+controls how hard it digs for buried national acts.
+
+> **Known limitations.** MusicBrainz / Nominatim / OSRM are rate-limited to ~1 req/s and
+> the country pull is deep, so a run takes a few minutes. **Sparse rural/alpine regions**
+> have few locally-tagged artists, so those segments under-fill — a music-rich route
+> (e.g. Amsterdam→Paris) fills far better than an Alpine one. Resolution is conservative
+> by design (precision over recall) to avoid wrong matches. Playlist length matches the
+> *total* drive, but a song is not synced to your live position (that needs the live
+> mode, out of scope for v1).
 
 ### Project layout
 
