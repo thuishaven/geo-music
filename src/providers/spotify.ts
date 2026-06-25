@@ -168,8 +168,8 @@ export class SpotifyProvider implements MusicProvider {
           ...(init.headers ?? {}),
         },
       });
-      if (res.status === 429) {
-        // Honour Retry-After (seconds) on rate-limit, then retry.
+      if (res.status === 429 || res.status >= 500) {
+        // Retry on rate-limit (honouring Retry-After) and transient 5xx errors.
         const wait = (Number(res.headers.get("retry-after")) || 2) * 1000;
         await new Promise((r) => setTimeout(r, wait));
         continue;
