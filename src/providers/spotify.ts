@@ -156,21 +156,30 @@ export class SpotifyProvider implements MusicProvider {
 
   private async api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!this.token) throw new Error("Not authenticated. Call authenticate() first.");
-    if (this.token.expires_at <= Date.now() + 30_000) {
-      this.token = await this.refresh(this.token.refresh_token);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (this.token.expires_at <= Date.now() + 30_000) {
+        this.token = await this.refresh(this.token.refresh_token);
+      }
+      const res = await fetch(`${API}${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${this.token.access_token}`,
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+      if (res.status === 429) {
+        // Honour Retry-After (seconds) on rate-limit, then retry.
+        const wait = (Number(res.headers.get("retry-after")) || 2) * 1000;
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      if (!res.ok) {
+        throw new Error(`Spotify ${init.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`);
+      }
+      return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
     }
-    const res = await fetch(`${API}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.token.access_token}`,
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
-    });
-    if (!res.ok) {
-      throw new Error(`Spotify ${init.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`);
-    }
-    return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+    throw new Error(`Spotify ${init.method ?? "GET"} ${path} failed after rate-limit retries.`);
   }
 
   private async fetchUserId(): Promise<string> {

@@ -32,7 +32,10 @@ export const config = {
   // Playlist sizing: aim for a total play time near the drive time × this scale.
   routeDurationScale: num("ROUTE_DURATION_SCALE", 1.0),
   // How many MusicBrainz artists to consider per place (breadth before depth).
-  artistCandidatesPerPlace: num("ARTIST_CANDIDATES_PER_PLACE", 10),
+  artistCandidatesPerPlace: num("ARTIST_CANDIDATES_PER_PLACE", 25),
+  // Drop artists below this Spotify popularity (0-100) to cut obscure noise
+  // (bird recordings, audition-show filler, zero-play bootlegs).
+  minArtistPopularity: num("MIN_ARTIST_POPULARITY", 25),
   // Cap on tracks taken from a single artist, so no one act dominates a place.
   maxTracksPerArtist: num("MAX_TRACKS_PER_ARTIST", 2),
   contact: env("CONTACT", "geo-music (https://github.com/thuishaven/geo-music)"),

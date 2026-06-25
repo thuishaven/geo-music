@@ -48,6 +48,8 @@ async function rankedCandidates(
       const match = await provider.searchArtist(a.name);
       if (!match || seen.has(match.id)) continue;
       seen.add(match.id);
+      // Drop obscure artists so ranking promotes real local acts, not noise.
+      if (match.popularity < config.minArtistPopularity) continue;
       pool.push({ artist: match, level: level.label });
     }
     // Stop widening once we likely have enough candidates to fill the slice.
