@@ -39,6 +39,10 @@ export const config = {
   routeDurationScale: num("ROUTE_DURATION_SCALE", 1.0),
   // How many MusicBrainz artists to consider per place (breadth before depth).
   artistCandidatesPerPlace: num("ARTIST_CANDIDATES_PER_PLACE", 25),
+  // Deeper pull at country level: famous national acts sit below a wall of
+  // classical composers in MusicBrainz (Falco #19, DJ Ötzi #40 for Austria),
+  // so we look further down to surface them.
+  countryCandidates: num("COUNTRY_CANDIDATES", 45),
   // Drop artists below this Spotify popularity (0-100) to cut obscure noise
   // (bird recordings, audition-show filler, zero-play bootlegs).
   minArtistPopularity: num("MIN_ARTIST_POPULARITY", 25),

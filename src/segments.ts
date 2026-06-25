@@ -4,6 +4,8 @@ import { findArtistsByPlace, type OriginArtist } from "./origin/musicbrainz.js";
 
 /** One geographic level to search, with its MusicBrainz result cached if known. */
 export interface SearchLevel {
+  /** Which administrative level this is. */
+  kind: "city" | "region" | "country";
   /** Display label, e.g. "city", "region: Utrecht", "country: France". */
   label: string;
   /** Area string passed to MusicBrainz. */
@@ -49,18 +51,18 @@ export async function resolveSegments(places: ResolvedPlace[]): Promise<Segment[
     if (hasCity) {
       key = `city:${place.name}`;
       label = place.name;
-      levels.push({ label: "city", query: place.name, mbArtists: cityArtists });
-      if (place.region) levels.push({ label: `region: ${place.region}`, query: place.region, mbArtists: null });
-      if (place.country) levels.push({ label: `country: ${place.country}`, query: place.country, mbArtists: null });
+      levels.push({ kind: "city", label: "city", query: place.name, mbArtists: cityArtists });
+      if (place.region) levels.push({ kind: "region", label: `region: ${place.region}`, query: place.region, mbArtists: null });
+      if (place.country) levels.push({ kind: "country", label: `country: ${place.country}`, query: place.country, mbArtists: null });
     } else {
       // No city artists: fall back, and key on the fallback area so adjacent
       // sparse places in the same region/country merge together.
       const fallback = place.region ?? place.country ?? place.name;
       key = `area:${fallback}`;
       label = fallback;
-      if (place.region) levels.push({ label: `region: ${place.region}`, query: place.region, mbArtists: null });
-      if (place.country) levels.push({ label: `country: ${place.country}`, query: place.country, mbArtists: null });
-      if (levels.length === 0) levels.push({ label: "city", query: place.name, mbArtists: cityArtists });
+      if (place.region) levels.push({ kind: "region", label: `region: ${place.region}`, query: place.region, mbArtists: null });
+      if (place.country) levels.push({ kind: "country", label: `country: ${place.country}`, query: place.country, mbArtists: null });
+      if (levels.length === 0) levels.push({ kind: "city", label: "city", query: place.name, mbArtists: cityArtists });
     }
 
     const prev = segments[segments.length - 1];

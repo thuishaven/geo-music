@@ -4,7 +4,7 @@ import { getRoute } from "./geo/route.js";
 import { sampleWaypoints } from "./geo/waypoints.js";
 import type { ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace, getSpotifyArtistId } from "./origin/musicbrainz.js";
-import { resolveSegments, type Segment } from "./segments.js";
+import { resolveSegments, type Segment, type SearchLevel } from "./segments.js";
 import type { MusicProvider, ProviderArtist, ProviderTrack } from "./providers/types.js";
 
 /** Rough average song length, used to estimate how many artists fill a slice. */
@@ -124,38 +124,73 @@ async function resolveCandidate(
   return null;
 }
 
+/** Resolved, filtered candidates for one search level (memoized per route). */
+type LevelCandidates = Array<{ artist: ProviderArtist; level: string }>;
+
 /**
- * Gather candidate artists for a segment, widening through its levels only while
- * the pool is too small to fill `budgetMs`, then rank by provider popularity so
- * recognizable acts lead while strict resolution keeps them correct.
+ * Resolve and filter all candidates for one geographic level, caching the
+ * result by query so re-visiting a country across many segments is cheap.
+ */
+async function resolveLevel(
+  provider: MusicProvider,
+  level: SearchLevel,
+  linkBudget: { left: number },
+  cache: Map<string, LevelCandidates>,
+): Promise<LevelCandidates> {
+  const cached = cache.get(level.query);
+  if (cached) return cached;
+
+  const count = level.kind === "country" ? config.countryCandidates : config.artistCandidatesPerPlace;
+  const artists = level.mbArtists ?? (await findArtistsByPlace(level.query, count));
+  const out: LevelCandidates = [];
+  for (const a of artists) {
+    const match = await resolveCandidate(provider, a.mbid, a.name, linkBudget);
+    if (!match) continue;
+    if (match.popularity < config.minArtistPopularity) continue; // drop obscure
+    if (isNonMusicArtist(match.genres)) continue; // drop audiobooks/spoken word
+    out.push({ artist: match, level: level.label });
+  }
+  cache.set(level.query, out);
+  return out;
+}
+
+/**
+ * Gather candidates for a segment as a blend of levels: local (city/region) up
+ * to roughly the slice budget, PLUS always the country level (deep pull) so
+ * recognizable national acts are in the mix. Ranking by popularity then lets the
+ * best-known songs lead, across all levels, while strict resolution keeps the
+ * matches correct. Famous nationals dedupe across segments, so later segments in
+ * the same country lean back toward regional/local.
  */
 async function rankedCandidates(
   provider: MusicProvider,
   segment: Segment,
   budgetMs: number,
   seen: Set<string>,
+  cache: Map<string, LevelCandidates>,
 ): Promise<Array<{ artist: ProviderArtist; level: string }>> {
-  const pool: Array<{ artist: ProviderArtist; level: string }> = [];
   const linkBudget = { left: config.maxLinkLookups };
-  for (const level of segment.levels) {
-    const artists =
-      level.mbArtists ?? (await findArtistsByPlace(level.query, config.artistCandidatesPerPlace));
-    for (const a of artists) {
-      const match = await resolveCandidate(provider, a.mbid, a.name, linkBudget);
-      if (!match || seen.has(match.id)) continue;
-      seen.add(match.id);
-      // Drop obscure artists so ranking promotes real local acts, not noise.
-      if (match.popularity < config.minArtistPopularity) continue;
-      // Drop non-music acts (audiobooks, audio-dramas, children's spoken word).
-      if (isNonMusicArtist(match.genres)) continue;
-      pool.push({ artist: match, level: level.label });
-    }
-    // Stop widening once we likely have enough candidates to fill the slice.
+  const pool: LevelCandidates = [];
+
+  // Local levels first, stopping once we likely have enough to fill the slice.
+  for (const level of segment.levels.filter((l) => l.kind !== "country")) {
+    pool.push(...(await resolveLevel(provider, level, linkBudget, cache)));
     if (pool.length * config.maxTracksPerArtist * AVG_SONG_MS >= budgetMs) break;
   }
+  // Always add the country level, so national acts join the mix regardless.
+  for (const level of segment.levels.filter((l) => l.kind === "country")) {
+    pool.push(...(await resolveLevel(provider, level, linkBudget, cache)));
+  }
 
-  pool.sort((a, b) => b.artist.popularity - a.artist.popularity);
-  return pool;
+  // Dedupe across segments and rank by popularity (well-known songs lead).
+  const result: LevelCandidates = [];
+  for (const c of pool) {
+    if (seen.has(c.artist.id)) continue;
+    seen.add(c.artist.id);
+    result.push(c);
+  }
+  result.sort((a, b) => b.artist.popularity - a.artist.popularity);
+  return result;
 }
 
 /** Build the tracklist for one segment: fill its time slice from ranked artists. */
@@ -165,8 +200,9 @@ async function tracksForSegment(
   budgetMs: number,
   seen: Set<string>,
   seenTracks: Set<string>,
+  cache: Map<string, LevelCandidates>,
 ): Promise<TaggedTrack[]> {
-  const candidates = await rankedCandidates(provider, segment, budgetMs, seen);
+  const candidates = await rankedCandidates(provider, segment, budgetMs, seen, cache);
 
   // Fetch top tracks for the most popular artists until the budget is covered,
   // capping classical/opera acts so country fallback doesn't drown the segment.
@@ -271,10 +307,11 @@ export async function buildPlaylist(
   const playlist: ProviderTrack[] = [];
   const seen = new Set<string>();
   const seenTracks = new Set<string>();
+  const levelCache = new Map<string, LevelCandidates>();
 
   for (const segment of segments) {
     const budgetMs = msPerPlace * segment.span;
-    const picked = await tracksForSegment(provider, segment, budgetMs, seen, seenTracks);
+    const picked = await tracksForSegment(provider, segment, budgetMs, seen, seenTracks, levelCache);
     playlist.push(...picked.map((p) => p.track));
 
     if (!picked.length) {
