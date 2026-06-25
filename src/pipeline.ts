@@ -39,6 +39,27 @@ function isClassical(genres: string[]): boolean {
   return genres.some((g) => CLASSICAL_GENRES.some((c) => g.includes(c)));
 }
 
+/** Genre substrings marking an artist as non-music (audiobooks, kids' spoken). */
+const NON_MUSIC_GENRES = [
+  "hörspiel", "horspiel", "hörbuch", "horbuch", "audiobook", "spoken word",
+  "children's music", "kindermusik", "kinderlieder", "kinderliedjes", "nursery", "lullaby",
+];
+
+function isNonMusicArtist(genres: string[]): boolean {
+  return genres.some((g) => NON_MUSIC_GENRES.some((n) => g.includes(n)));
+}
+
+/**
+ * Title patterns marking a track as non-music (audiobook/audio-drama chapters,
+ * untitled "Track 01"). Kept narrow so real songs — e.g. "Oxygène, Pt. 4" or a
+ * classical movement — are not caught.
+ */
+const NON_MUSIC_TITLE = /(\bkapitel\b|\bteil\s*\d|\bfolge\s*\d|\bchapter\s*\d|hörspiel|hörbuch|^track\s*\d+$)/i;
+
+function isNonMusicTitle(name: string): boolean {
+  return NON_MUSIC_TITLE.test(name);
+}
+
 /**
  * Normalize a track title so the same recording collapses regardless of credit
  * or version: drop "- Radio Edit"/"- Live" suffixes and "(feat. …)" parts, then
@@ -74,6 +95,8 @@ async function rankedCandidates(
       seen.add(match.id);
       // Drop obscure artists so ranking promotes real local acts, not noise.
       if (match.popularity < config.minArtistPopularity) continue;
+      // Drop non-music acts (audiobooks, audio-dramas, children's spoken word).
+      if (isNonMusicArtist(match.genres)) continue;
       pool.push({ artist: match, level: level.label });
     }
     // Stop widening once we likely have enough candidates to fill the slice.
@@ -127,6 +150,8 @@ async function tracksForSegment(
   let placeMs = 0;
   for (const t of tagged) {
     if (placeMs >= budgetMs && picked.length > 0) break;
+    // Skip audiobook/audio-drama chapters that slip past the artist genre check.
+    if (isNonMusicTitle(t.track.name)) continue;
     const key = trackKey(t.track.name);
     if (seenTracks.has(key)) continue;
     seenTracks.add(key);
