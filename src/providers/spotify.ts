@@ -192,10 +192,17 @@ export class SpotifyProvider implements MusicProvider {
   async searchArtist(name: string): Promise<ProviderArtist | null> {
     const q = encodeURIComponent(name);
     const data = await this.api<{
-      artists: { items: Array<{ id: string; name: string; popularity: number }> };
+      artists: { items: Array<{ id: string; name: string; popularity: number; genres?: string[] }> };
     }>(`/search?q=${q}&type=artist&limit=1`);
     const hit = data.artists.items[0];
-    return hit ? { id: hit.id, name: hit.name, popularity: hit.popularity } : null;
+    return hit
+      ? {
+          id: hit.id,
+          name: hit.name,
+          popularity: hit.popularity,
+          genres: (hit.genres ?? []).map((g) => g.toLowerCase()),
+        }
+      : null;
   }
 
   async getTopTracks(artistId: string, limit: number): Promise<ProviderTrack[]> {

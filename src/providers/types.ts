@@ -8,6 +8,8 @@ export interface ProviderArtist {
   name: string;
   /** Provider popularity (0-100 for Spotify), used to rank artists. */
   popularity: number;
+  /** Genre tags (lowercased), used to limit classical density per segment. */
+  genres: string[];
 }
 
 export interface ProviderTrack {

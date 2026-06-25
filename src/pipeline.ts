@@ -29,6 +29,30 @@ interface TaggedTrack {
   level: string;
 }
 
+/** Genre substrings that mark an artist as classical/opera for the per-segment cap. */
+const CLASSICAL_GENRES = [
+  "classical", "baroque", "opera", "operatic", "orchestra", "choral",
+  "early music", "romantic", "impressionism", "renaissance", "compositeur",
+];
+
+function isClassical(genres: string[]): boolean {
+  return genres.some((g) => CLASSICAL_GENRES.some((c) => g.includes(c)));
+}
+
+/**
+ * Normalize a track title so the same recording collapses regardless of credit
+ * or version: drop "- Radio Edit"/"- Live" suffixes and "(feat. …)" parts, then
+ * strip to alphanumerics. Used to de-duplicate across the whole playlist.
+ */
+function trackKey(name: string): string {
+  return name
+    .toLowerCase()
+    .split(" - ")[0]
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 /**
  * Gather candidate artists for a segment, widening through its levels only
  * while the pool is too small to fill `budgetMs`, then rank the whole pool by
@@ -66,14 +90,21 @@ async function tracksForSegment(
   segment: Segment,
   budgetMs: number,
   seen: Set<string>,
+  seenTracks: Set<string>,
 ): Promise<TaggedTrack[]> {
   const candidates = await rankedCandidates(provider, segment, budgetMs, seen);
 
-  // Fetch top tracks for the most popular artists until the budget is covered.
+  // Fetch top tracks for the most popular artists until the budget is covered,
+  // capping classical/opera acts so country fallback doesn't drown the segment.
   const perArtist: Array<{ tracks: ProviderTrack[]; level: string }> = [];
   let estMs = 0;
+  let classicalUsed = 0;
   for (const c of candidates) {
     if (estMs >= budgetMs) break;
+    if (isClassical(c.artist.genres)) {
+      if (classicalUsed >= config.maxClassicalPerSegment) continue;
+      classicalUsed++;
+    }
     const tracks = await provider.getTopTracks(c.artist.id, config.maxTracksPerArtist);
     if (!tracks.length) continue;
     perArtist.push({ tracks, level: c.level });
@@ -90,11 +121,15 @@ async function tracksForSegment(
     }
   }
 
-  // Fill the slice exactly (always take at least one track if available).
+  // Fill the slice (always take at least one track if available), skipping any
+  // track whose title already appears anywhere in the playlist.
   const picked: TaggedTrack[] = [];
   let placeMs = 0;
   for (const t of tagged) {
     if (placeMs >= budgetMs && picked.length > 0) break;
+    const key = trackKey(t.track.name);
+    if (seenTracks.has(key)) continue;
+    seenTracks.add(key);
     picked.push(t);
     placeMs += t.track.durationMs;
   }
@@ -144,10 +179,11 @@ export async function buildPlaylist(
 
   const playlist: ProviderTrack[] = [];
   const seen = new Set<string>();
+  const seenTracks = new Set<string>();
 
   for (const segment of segments) {
     const budgetMs = msPerPlace * segment.span;
-    const picked = await tracksForSegment(provider, segment, budgetMs, seen);
+    const picked = await tracksForSegment(provider, segment, budgetMs, seen, seenTracks);
     playlist.push(...picked.map((p) => p.track));
 
     if (!picked.length) {
