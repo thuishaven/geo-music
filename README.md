@@ -49,6 +49,20 @@ Spotify credentials.
    npm start -- "Amsterdam" "Paris"
    ```
 
+   On a **headless / remote server** where the `127.0.0.1:8888` redirect can't reach
+   your browser, authorize manually instead:
+   ```bash
+   npm run auth                 # prints an authorize URL
+   # open it, approve, copy the code= value from the redirected address bar
+   npm run auth -- "<code>"     # exchanges + caches the token
+   npm start -- "Amsterdam" "Paris"
+   ```
+
+> **Spotify Premium required.** Spotify's Web API requires the **app owner's** account
+> (the one that created the app in the dashboard) to have an active Premium subscription.
+> A non-Premium owner gets `403 Active premium subscription required for the owner of the
+> app` on the first call. Subscription changes can take a few hours to propagate.
+
 Output is an ordered playlist whose artists march geographically from start to end,
 **sized so its total play time is roughly the driving time** — each place along the
 route gets an equal slice of that budget. Tune length with `ROUTE_DURATION_SCALE`

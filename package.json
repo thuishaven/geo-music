@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "tsx src/index.ts",
+    "auth": "tsx scripts/spotify-auth.ts",
     "typecheck": "tsc --noEmit"
   },
   "license": "MIT",

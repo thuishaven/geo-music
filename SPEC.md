@@ -139,11 +139,18 @@ MusicProvider:
 
 | | Spotify | Apple Music |
 |---|---|---|
-| Dev account | Free | **Apple Developer Program — ~$99/yr** |
+| Dev account | Free to create an app | **Apple Developer Program — ~$99/yr** |
+| Subscription | **App owner must have Premium** (even just to create/fill playlists — Web API returns `403` otherwise) | Apple Music subscription |
 | App auth | OAuth client secret | Signed JWT developer token |
 | User auth | OAuth redirect flow | MusicKit → Music User Token |
 | Popularity score | Yes (used for ranking) | No equivalent |
 | Effort for first build | Low | Higher (JWT signing, MusicKit) |
+
+> **Correction to an earlier assumption:** creating a Spotify *app* is free, but the
+> Web API now requires the **app owner's account** to have an active Premium
+> subscription — even for non-playback calls like creating and filling a playlist. A
+> non-Premium owner gets `403 Active premium subscription required for the owner of the
+> app`. Premium is therefore a hard prerequisite, not just a future live-mode concern.
 
 **Consequences:**
 - Build **Spotify first** behind the interface — it's free, fast, and provides the
