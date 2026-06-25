@@ -34,8 +34,12 @@ export interface MusicProvider {
   /** Authenticate (user-level), so playlists can be created on their behalf. */
   authenticate(): Promise<void>;
 
-  /** Resolve an artist name to a strict (name-matching) catalog match, or null. */
-  searchArtist(name: string): Promise<ProviderArtist | null>;
+  /**
+   * Search an artist name and return both a strict (name-matching) result and
+   * the top fuzzy result, from a single query. `strict` is null when no result
+   * name matches; `top` is the most relevant result regardless of name.
+   */
+  searchArtist(name: string): Promise<{ strict: ProviderArtist | null; top: ProviderArtist | null }>;
 
   /** Fetch an artist directly by catalog id (used for MB-link resolution). */
   getArtistById(id: string): Promise<ProviderArtist | null>;

@@ -199,25 +199,30 @@ export class SpotifyProvider implements MusicProvider {
       .trim();
   }
 
-  async searchArtist(name: string): Promise<ProviderArtist | null> {
+  async searchArtist(
+    name: string,
+  ): Promise<{ strict: ProviderArtist | null; top: ProviderArtist | null }> {
     const q = encodeURIComponent(name);
     const data = await this.api<{
       artists: { items: Array<{ id: string; name: string; popularity: number; genres?: string[] }> };
     }>(`/search?q=${q}&type=artist&limit=10`);
-    // Strict: only accept a result whose name matches, so "MOLLY" can't resolve
-    // to "Molly Santana". Among exact matches, take the most popular.
+    const items = data.artists.items;
+    const toArtist = (a: (typeof items)[number]): ProviderArtist => ({
+      id: a.id,
+      name: a.name,
+      popularity: a.popularity,
+      genres: (a.genres ?? []).map((g) => g.toLowerCase()),
+    });
+    // Strict: a result whose name matches (so "MOLLY" can't become "Molly
+    // Santana"); among matches take the most popular. Top: most relevant result.
     const target = SpotifyProvider.normalize(name);
-    const hit = data.artists.items
+    const strictHit = items
       .filter((a) => SpotifyProvider.normalize(a.name) === target)
       .sort((a, b) => b.popularity - a.popularity)[0];
-    return hit
-      ? {
-          id: hit.id,
-          name: hit.name,
-          popularity: hit.popularity,
-          genres: (hit.genres ?? []).map((g) => g.toLowerCase()),
-        }
-      : null;
+    return {
+      strict: strictHit ? toArtist(strictHit) : null,
+      top: items[0] ? toArtist(items[0]) : null,
+    };
   }
 
   async getArtistById(id: string): Promise<ProviderArtist | null> {

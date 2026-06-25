@@ -96,9 +96,38 @@ function trackKey(name: string): string {
 }
 
 /**
- * Gather candidate artists for a segment, widening through its levels only
- * while the pool is too small to fill `budgetMs`, then rank the whole pool by
- * provider popularity (so famous local acts beat name-match orchestras).
+ * Resolve a MusicBrainz candidate to a provider artist, in precision order:
+ *   1. strict name match (correct, kills famous-stranger hijacks)
+ *   2. MusicBrainz-stored Spotify link (exact, bounded by rate limit)
+ *   3. guarded loose fallback — the top fuzzy result, accepted ONLY if it isn't
+ *      a famous stranger (popularity ceiling), to recover recall without Drakes.
+ */
+async function resolveCandidate(
+  provider: MusicProvider,
+  mbid: string,
+  name: string,
+  linkBudget: { left: number },
+): Promise<ProviderArtist | null> {
+  const { strict, top } = await provider.searchArtist(name);
+  if (strict) return strict;
+
+  if (config.useMbLinks && linkBudget.left > 0) {
+    linkBudget.left--;
+    const spotifyId = await getSpotifyArtistId(mbid);
+    if (spotifyId) {
+      const byId = await provider.getArtistById(spotifyId);
+      if (byId) return byId;
+    }
+  }
+
+  if (top && top.popularity <= config.looseFallbackMaxPop) return top;
+  return null;
+}
+
+/**
+ * Gather candidate artists for a segment, widening through its levels only while
+ * the pool is too small to fill `budgetMs`, then rank by provider popularity so
+ * recognizable acts lead while strict resolution keeps them correct.
  */
 async function rankedCandidates(
   provider: MusicProvider,
@@ -107,19 +136,12 @@ async function rankedCandidates(
   seen: Set<string>,
 ): Promise<Array<{ artist: ProviderArtist; level: string }>> {
   const pool: Array<{ artist: ProviderArtist; level: string }> = [];
-  let linkLookups = 0;
+  const linkBudget = { left: config.maxLinkLookups };
   for (const level of segment.levels) {
     const artists =
       level.mbArtists ?? (await findArtistsByPlace(level.query, config.artistCandidatesPerPlace));
     for (const a of artists) {
-      // Strict name match first; if it fails, try the MusicBrainz-stored Spotify
-      // link for an exact resolution (bounded, since each lookup is rate-limited).
-      let match = await provider.searchArtist(a.name);
-      if (!match && config.useMbLinks && linkLookups < config.maxLinkLookups) {
-        linkLookups++;
-        const spotifyId = await getSpotifyArtistId(a.mbid);
-        if (spotifyId) match = await provider.getArtistById(spotifyId);
-      }
+      const match = await resolveCandidate(provider, a.mbid, a.name, linkBudget);
       if (!match || seen.has(match.id)) continue;
       seen.add(match.id);
       // Drop obscure artists so ranking promotes real local acts, not noise.

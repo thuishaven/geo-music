@@ -54,6 +54,10 @@ export const config = {
   // Spotify link (exact). Bounded per segment, as each lookup is rate-limited.
   useMbLinks: bool("USE_MB_LINKS", true),
   maxLinkLookups: num("MAX_LINK_LOOKUPS", 6),
+  // Last-resort loose match: accept the top fuzzy result for an unmatched name
+  // only if its popularity is at/below this, so a famous stranger (Drake) can't
+  // hijack an obscure local. 0 effectively disables the loose fallback.
+  looseFallbackMaxPop: num("LOOSE_FALLBACK_MAX_POP", 55),
   contact: env("CONTACT", "geo-music (https://github.com/thuishaven/geo-music)"),
 };
 
