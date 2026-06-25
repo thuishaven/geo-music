@@ -189,12 +189,27 @@ export class SpotifyProvider implements MusicProvider {
 
   // --- MusicProvider surface ---
 
+  /** Normalize an artist name for strict comparison (case/diacritics/punctuation). */
+  private static normalize(s: string): string {
+    return s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
   async searchArtist(name: string): Promise<ProviderArtist | null> {
     const q = encodeURIComponent(name);
     const data = await this.api<{
       artists: { items: Array<{ id: string; name: string; popularity: number; genres?: string[] }> };
-    }>(`/search?q=${q}&type=artist&limit=1`);
-    const hit = data.artists.items[0];
+    }>(`/search?q=${q}&type=artist&limit=10`);
+    // Strict: only accept a result whose name matches, so "MOLLY" can't resolve
+    // to "Molly Santana". Among exact matches, take the most popular.
+    const target = SpotifyProvider.normalize(name);
+    const hit = data.artists.items
+      .filter((a) => SpotifyProvider.normalize(a.name) === target)
+      .sort((a, b) => b.popularity - a.popularity)[0];
     return hit
       ? {
           id: hit.id,
@@ -202,6 +217,15 @@ export class SpotifyProvider implements MusicProvider {
           popularity: hit.popularity,
           genres: (hit.genres ?? []).map((g) => g.toLowerCase()),
         }
+      : null;
+  }
+
+  async getArtistById(id: string): Promise<ProviderArtist | null> {
+    const a = await this.api<{ id: string; name: string; popularity: number; genres?: string[] }>(
+      `/artists/${id}`,
+    );
+    return a
+      ? { id: a.id, name: a.name, popularity: a.popularity, genres: (a.genres ?? []).map((g) => g.toLowerCase()) }
       : null;
   }
 

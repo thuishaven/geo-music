@@ -3,7 +3,7 @@ import { geocode, reverseToPlace } from "./geo/geocode.js";
 import { getRoute } from "./geo/route.js";
 import { sampleWaypoints } from "./geo/waypoints.js";
 import type { ResolvedPlace } from "./geo/types.js";
-import { findArtistsByPlace } from "./origin/musicbrainz.js";
+import { findArtistsByPlace, getSpotifyArtistId } from "./origin/musicbrainz.js";
 import { resolveSegments, type Segment } from "./segments.js";
 import type { MusicProvider, ProviderArtist, ProviderTrack } from "./providers/types.js";
 
@@ -107,11 +107,19 @@ async function rankedCandidates(
   seen: Set<string>,
 ): Promise<Array<{ artist: ProviderArtist; level: string }>> {
   const pool: Array<{ artist: ProviderArtist; level: string }> = [];
+  let linkLookups = 0;
   for (const level of segment.levels) {
     const artists =
       level.mbArtists ?? (await findArtistsByPlace(level.query, config.artistCandidatesPerPlace));
     for (const a of artists) {
-      const match = await provider.searchArtist(a.name);
+      // Strict name match first; if it fails, try the MusicBrainz-stored Spotify
+      // link for an exact resolution (bounded, since each lookup is rate-limited).
+      let match = await provider.searchArtist(a.name);
+      if (!match && config.useMbLinks && linkLookups < config.maxLinkLookups) {
+        linkLookups++;
+        const spotifyId = await getSpotifyArtistId(a.mbid);
+        if (spotifyId) match = await provider.getArtistById(spotifyId);
+      }
       if (!match || seen.has(match.id)) continue;
       seen.add(match.id);
       // Drop obscure artists so ranking promotes real local acts, not noise.

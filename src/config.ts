@@ -19,6 +19,12 @@ function num(name: string, fallback: number): number {
   return parsed;
 }
 
+function bool(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  return raw === "true" || raw === "1";
+}
+
 export const config = {
   spotify: {
     // Not required for --dry-run; validated in SpotifyProvider.authenticate().
@@ -44,6 +50,10 @@ export const config = {
   // Cap on classical/opera artists per segment. 0 = exclude classical entirely
   // (default — it's mostly country-level tagging noise and off-vibe for a drive).
   maxClassicalPerSegment: num("MAX_CLASSICAL_PER_SEGMENT", 0),
+  // When strict name-matching fails, fall back to the artist's MusicBrainz-stored
+  // Spotify link (exact). Bounded per segment, as each lookup is rate-limited.
+  useMbLinks: bool("USE_MB_LINKS", true),
+  maxLinkLookups: num("MAX_LINK_LOOKUPS", 6),
   contact: env("CONTACT", "geo-music (https://github.com/thuishaven/geo-music)"),
 };
 

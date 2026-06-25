@@ -39,3 +39,22 @@ export async function findArtistsByPlace(
     .slice(0, limit)
     .map((a) => ({ mbid: a.id, name: a.name, score: a.score }));
 }
+
+interface MbArtistRelations {
+  relations?: Array<{ url?: { resource?: string } }>;
+}
+
+/**
+ * Look up an artist's stored Spotify artist id via MusicBrainz URL relations,
+ * for exact resolution when fuzzy name search fails. One request per call
+ * (rate-limited), so callers should bound how often they use it.
+ */
+export async function getSpotifyArtistId(mbid: string): Promise<string | null> {
+  const url = `${MUSICBRAINZ}/artist/${mbid}?inc=url-rels&fmt=json`;
+  const data = await getJson<MbArtistRelations>(url);
+  for (const rel of data.relations ?? []) {
+    const match = (rel.url?.resource ?? "").match(/open\.spotify\.com\/artist\/([A-Za-z0-9]+)/);
+    if (match) return match[1];
+  }
+  return null;
+}

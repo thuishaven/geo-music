@@ -34,8 +34,11 @@ export interface MusicProvider {
   /** Authenticate (user-level), so playlists can be created on their behalf. */
   authenticate(): Promise<void>;
 
-  /** Resolve an artist name to the best catalog match, or null if not found. */
+  /** Resolve an artist name to a strict (name-matching) catalog match, or null. */
   searchArtist(name: string): Promise<ProviderArtist | null>;
+
+  /** Fetch an artist directly by catalog id (used for MB-link resolution). */
+  getArtistById(id: string): Promise<ProviderArtist | null>;
 
   /**
    * The artist's most popular playable tracks (up to `limit`), most popular
