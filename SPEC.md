@@ -4,7 +4,7 @@
 > builds a playlist of artists *from* the towns you drive through, ordered along the
 > route — so when you roll into Amsterdam, you hear Amsterdam.
 
-**Status**: pre-prototype (spec only)
+**Status**: Phase 0 prototype working (Spotify CLI) — see §7
 **Org**: [thuishaven](https://github.com/thuishaven)
 **License**: MIT
 
@@ -70,28 +70,35 @@ A static, route-ordered playlist generator.
 ## 3. How it works (pipeline)
 
 The geographic "brain" is **provider-agnostic**. Only the final playlist-building
-step differs per music service.
+step differs per music service. This reflects what Phase 0 actually implements.
 
-1. **Route A → B.** Feed start and end to a routing API → a route polyline.
-   - Candidate: [OSRM](https://project-osrm.org/) (free/open) or Google Directions.
-2. **Sample waypoints.** Walk the polyline and sample points roughly every *N* km;
-   keep meaningful towns/cities, not raw GPS points.
-3. **Reverse-geocode** each waypoint → a place name (city / town / region).
-4. **Find local artists per place.** Query MusicBrainz by area, e.g. `area:Amsterdam`,
-   to get artists associated with that place. (See §4.)
-5. **Rank & pick a track per artist.** Resolve each artist in the music service,
-   rank by popularity, take a representative (top) track.
-6. **Assemble in route order.** Concatenate per-place track lists in travel order
-   → create the playlist in the chosen service.
+1. **Route A → B.** Feed start and end to [OSRM](https://project-osrm.org/) → a route
+   polyline plus the estimated **drive duration** (used to size the playlist).
+2. **Sample waypoints.** Walk the polyline and sample points roughly every *N* km
+   (`WAYPOINT_INTERVAL_KM`), capped at `MAX_PLACES`.
+3. **Reverse-geocode** each waypoint (Nominatim, English names) → a place with its
+   **region and country**, for graceful widening later.
+4. **Merge into segments.** Probe each place's city level once; consecutive places that
+   resolve to the same effective area (e.g. several villages in one region) merge into a
+   single **segment** with a `span` = how many places it covers.
+5. **Find local artists per segment.** MusicBrainz `area:` search, widening
+   city → region → country **only while the segment is under-filled**.
+6. **Rank & filter.** Resolve candidates on the music service, **rank by popularity**,
+   drop artists below a popularity floor, drop non-music acts (audiobooks/children's),
+   cap classical acts per segment.
+7. **Fill time slices.** Each segment gets a slice of the drive-time budget proportional
+   to its `span`, filled from the highest-popularity artists' top tracks; tracks are
+   de-duplicated playlist-wide by normalized title.
+8. **Assemble in travel order** → create the playlist in the chosen service.
 
 ```
-A,B ──▶ route ──▶ waypoints ──▶ reverse-geocode ──▶ [places]
-                                                        │
-                                  per place: MusicBrainz area search
-                                                        │
-                                            rank by popularity, pick top track
-                                                        │
-                              assemble in travel order ──▶ create playlist
+A,B ─▶ route(+duration) ─▶ waypoints ─▶ reverse-geocode ─▶ merge into segments
+                                                                    │
+                              per segment: MusicBrainz area search (city→region→country)
+                                                                    │
+                          rank by popularity · floor · non-music & classical filters
+                                                                    │
+                  fill each segment's time slice (∝ span) · dedup ─▶ create playlist
 ```
 
 ---
@@ -198,17 +205,27 @@ lifecycle). *(Interpretation — confirm with maintainer; see §8.)*
 
 Phased, smallest-magic-first. Stop and review after each phase.
 
-### Phase 0 — Smallest thing that proves the magic
-A script: input two cities → output an ordered Spotify playlist whose artists march
-geographically A→B. No app, no UI, no GPS. If this feels good on a real drive, the
-idea is validated. Everything else is scaling and polish.
+### Phase 0 — Smallest thing that proves the magic ✅ DONE
+A CLI: input two cities → an ordered Spotify playlist whose artists march
+geographically A→B, sized to the drive time. No app, no UI, no GPS. Validated on real
+routes (Amsterdam→Paris, Munich→Milan). What shipped, beyond the minimal proof:
 
-### Phase 1 — Shared geo pipeline + Spotify provider
-1. Routing + waypoint sampling + reverse-geocoding (§3 steps 1–3).
-2. MusicBrainz area search per place (§3 step 4).
-3. `MusicProvider` interface; **Spotify** implementation (§5).
-4. Ranking + track selection + playlist assembly (§3 steps 5–6).
-5. Spotify OAuth flow with a public redirect URI.
+- OSRM routing (+ drive duration) + Nominatim geocoding (region/country) — keyless.
+- Segment merging weighted by route coverage; city→region→country fallback.
+- MusicBrainz area search; `MusicProvider` interface + **Spotify** implementation.
+- Spotify OAuth (loopback + a manual helper for headless setups), token cache/refresh.
+- **Quality pipeline**: rank by Spotify popularity, popularity floor, classical cap,
+  non-music filter (audiobooks/children's), playlist-wide track de-duplication.
+- `--dry-run` preview (geo + artists, no credentials needed).
+- All behaviour tunable via env (see `.env.example` / README table).
+
+Finding from real-route testing: music-rich **cities and strong national scenes**
+(Italy, France, German cities) come out great; **sparse rural/alpine regions** are noisy
+because MusicBrainz `area:` tagging is thin there — the artist-origin data problem (§8).
+
+### Phase 1 — Shared geo pipeline + Spotify provider ✅ folded into Phase 0
+The geo pipeline, MusicBrainz search, `MusicProvider` interface, Spotify implementation,
+ranking, and OAuth all landed in Phase 0. Remaining Phase-1-ish polish lives in §8.
 
 ### Phase 2 — On-prem deployment
 1. Containerize.
@@ -223,30 +240,38 @@ idea is validated. Everything else is scaling and polish.
 1. Author the `media` pattern in `thuishaven/thuishaven` documenting the self-host
    recipe; start `experimental`, promote to `stable` after validation.
 
-### Known tradeoffs accepted for v1
-- MusicBrainz rate limit (~1 req/s) → keep routes short, sample few waypoints, cache
-  aggressively.
-- `area:` search is name-based and fuzzy → keep only real cities/towns; skip junk.
-- MusicBrainz → music-service name matching is lossy → tolerate occasional wrong
-  matches in the prototype.
-- Sparse regions produce gaps → a playlist with gaps is fine for v1.
+### Known tradeoffs (as built)
+- MusicBrainz / Nominatim / OSRM rate limit (~1 req/s) → the CLI self-throttles per
+  host; long routes take a few minutes.
+- `area:` search is name-based and fuzzy → mitigated by popularity ranking + floor +
+  non-music/classical filters, but **sparse regions return a geographically loose mix**
+  (the open data-quality problem, §8).
+- MusicBrainz → Spotify name matching is lossy → occasional wrong matches remain.
+- Playlist length tracks the *total* drive, not per-song position (no live pacing).
 
 ---
 
-## 8. Open questions
+## 8. Open questions & next work
 
-1. **Tech stack.** TypeScript / Node 20 is the natural choice (matches the Thuishaven
-   org's stack and keeps a path to code reuse). Confirm before Phase 1.
-2. **Canonical "from" rule** (§4): formation/birthplace → current base? Finalize.
-3. **Routing + reverse-geocoding provider**: OSRM (free/open) vs Google Directions
-   (better data, paid/keyed). Pick for Phase 1.
-4. **Waypoint density** (`N` km between samples) and how to decide a place is
-   "notable enough" to include.
-5. **Ranking & size**: playlist length now targets drive time with an equal slice per
-   place (implemented). Still open: weight slices by *dwell time* (traffic/stops) or by
-   an area's *artist density*; rank artists by Spotify popularity rather than MusicBrainz
-   relevance; a distance radius that expands until it finds *something*.
-6. **"Available on Thuishaven" interpretation** (§6): confirm it means a Thuishaven
-   `media` pattern, not some other integration.
-7. **Domain / subdomain** for the public OAuth-callback URL.
-8. **Future — live/GPS reactivity**: revisit after v1 proves the static experience.
+**Resolved in Phase 0**
+- *Tech stack*: TypeScript / Node 20. ✅
+- *Routing/geocoding provider*: OSRM + Nominatim (keyless). ✅
+- *Ranking*: by Spotify popularity, with floor + filters. ✅
+- *Playlist size*: targets drive time, per-segment slice ∝ route coverage. ✅
+
+**Still open**
+1. **Sparse-region incoherence (the big one).** Sparse rural/alpine areas fall back to
+   region/country and return a loose, sometimes off-geography mix. This is the
+   artist-origin **data-quality** problem flagged in §1 as the only real moat. Options:
+   a stricter floor at country level; capping a fallback segment's budget; or building a
+   better origin source (bulk MusicBrainz + enrichment) — the deferred "own catalog".
+2. **Canonical "from" rule** (§4): birthplace/formation vs current base — still relying
+   on MusicBrainz's `area:` as-is.
+3. **Slice weighting**: currently ∝ number of places merged; could weight by *dwell
+   time* (traffic/stops) or an area's *artist density*.
+4. **Non-local noise**: artists loosely tagged to a country still ride country fallback;
+   needs tighter origin verification.
+5. **"Available on Thuishaven" interpretation** (§6): confirmed — a Thuishaven `media`
+   pattern. (Phase 4.)
+6. **Domain / subdomain** for the public OAuth-callback URL (Phase 2 deployment).
+7. **Future — live/GPS reactivity**: revisit after the static experience is proven.
