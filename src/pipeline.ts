@@ -2,7 +2,7 @@ import { config } from "./config.js";
 import { geocode, reverseToPlace } from "./geo/geocode.js";
 import { getRoute } from "./geo/route.js";
 import { sampleWaypoints } from "./geo/waypoints.js";
-import type { ResolvedPlace } from "./geo/types.js";
+import type { Coord, ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace, getSpotifyArtistId } from "./origin/musicbrainz.js";
 import { resolveSegments, type Segment, type SearchLevel } from "./segments.js";
 import type { MusicProvider, ProviderArtist, ProviderTrack } from "./providers/types.js";
@@ -53,6 +53,23 @@ export interface PlaylistPlan {
 
 function minutes(ms: number): number {
   return Math.round(ms / 60000);
+}
+
+/**
+ * Ensure the route's destination is the final place, even if the MAX_PLACES cap
+ * was hit mid-route — otherwise long trips stop short of where you're going.
+ * Exported so the dry-run preview shares the exact behaviour.
+ */
+export async function appendDestination(
+  places: ResolvedPlace[],
+  waypoints: Coord[],
+): Promise<void> {
+  const last = waypoints[waypoints.length - 1];
+  if (!last) return;
+  const dest = await reverseToPlace(last);
+  if (!dest || places[places.length - 1]?.name === dest.name) return;
+  if (places.length >= config.maxPlaces) places.pop(); // make room for the destination
+  places.push(dest);
 }
 
 /** A candidate track tagged with the geographic level it was sourced from. */
@@ -328,6 +345,7 @@ export async function buildPlaylist(
     const place = await reverseToPlace(wp);
     if (place && places[places.length - 1]?.name !== place.name) places.push(place);
   }
+  await appendDestination(places, waypoints);
   if (places.length === 0) throw new Error("No places resolved along the route.");
 
   // Merge consecutive same-area places into segments; weight time by coverage.

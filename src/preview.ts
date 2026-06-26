@@ -5,6 +5,7 @@ import { sampleWaypoints } from "./geo/waypoints.js";
 import type { ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace } from "./origin/musicbrainz.js";
 import { resolveSegments } from "./segments.js";
+import { appendDestination } from "./pipeline.js";
 
 /**
  * Dry-run preview: runs the provider-agnostic half of the pipeline (route →
@@ -36,6 +37,7 @@ export async function previewRoute(from: string, to: string): Promise<void> {
     const place = await reverseToPlace(wp);
     if (place && places[places.length - 1]?.name !== place.name) places.push(place);
   }
+  await appendDestination(places, waypoints);
   if (places.length === 0) {
     console.log("No places resolved along the route.");
     return;
