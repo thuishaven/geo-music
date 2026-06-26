@@ -114,7 +114,127 @@ function renderResult(plan) {
     timelineEl.appendChild(li);
   });
 
+  setupPlayer(plan);
   resultEl.scrollIntoView({ behavior: "smooth" });
+}
+
+/** Haversine distance (km) between two [lat, lon] points. */
+function hav(a, b) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLon = toRad(b[1] - a[1]);
+  const la1 = toRad(a[0]);
+  const la2 = toRad(b[0]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+let flyRAF = null;
+
+/** Scrubber + "Fly the route" playhead over the journey's timeline. */
+function setupPlayer(plan) {
+  const playerEl = $("#player");
+  const scrubber = $("#scrubber");
+  const flyBtn = $("#fly-btn");
+  const readout = $("#playhead-readout");
+  const route = plan.route;
+  const tracks = plan.tracks;
+
+  if (flyRAF) cancelAnimationFrame(flyRAF), (flyRAF = null);
+  if (!tracks.length || route.length < 2) {
+    playerEl.hidden = true;
+    return;
+  }
+  playerEl.hidden = false;
+  flyBtn.textContent = "▶ Fly the route";
+
+  const totalMs = tracks[tracks.length - 1].offsetMs + tracks[tracks.length - 1].durationMs;
+
+  // Precompute cumulative distances so positioning the playhead is cheap.
+  const cum = [0];
+  for (let i = 1; i < route.length; i++) cum.push(cum[i - 1] + hav(route[i - 1], route[i]));
+  const totalDist = cum[cum.length - 1] || 1;
+  const at = (frac) => {
+    if (frac <= 0) return route[0];
+    if (frac >= 1) return route[route.length - 1];
+    const tgt = frac * totalDist;
+    let i = 1;
+    while (i < route.length && cum[i] < tgt) i++;
+    const p = cum[i - 1];
+    const seg = cum[i] - p || 1;
+    const t = (tgt - p) / seg;
+    const a = route[i - 1];
+    const b = route[i];
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+
+  const playhead = L.circleMarker(at(0), {
+    radius: 8,
+    color: "#ffffff",
+    weight: 3,
+    fillColor: "#1db954",
+    fillOpacity: 1,
+  }).addTo(map);
+  markers.push(playhead);
+
+  const trackIndexAt = (ms) => {
+    let idx = 0;
+    for (let i = 0; i < tracks.length; i++) {
+      if (tracks[i].offsetMs <= ms) idx = i;
+      else break;
+    }
+    return idx;
+  };
+
+  const lis = () => timelineEl.querySelectorAll("li");
+  function update(ms) {
+    playhead.setLatLng(at(totalMs ? ms / totalMs : 0));
+    const idx = trackIndexAt(ms);
+    const t = tracks[idx];
+    readout.innerHTML =
+      `${formatOffset(ms)} in · <span class="rd-place">${escapeHtml(t.place)}</span> · ♪ ` +
+      `${escapeHtml(t.artist)} — ${escapeHtml(t.title)}`;
+    lis().forEach((x, i) => x.classList.toggle("active", i === idx));
+    const active = lis()[idx];
+    if (active) active.scrollIntoView({ block: "nearest" });
+  }
+
+  function stopFly() {
+    if (flyRAF) cancelAnimationFrame(flyRAF);
+    flyRAF = null;
+    flyBtn.textContent = "▶ Fly the route";
+  }
+
+  scrubber.oninput = () => {
+    stopFly();
+    update((scrubber.value / 1000) * totalMs);
+  };
+
+  const FLY_MS = 24000; // ~24s to fly the whole route
+  flyBtn.onclick = () => {
+    if (flyRAF) return stopFly();
+    flyBtn.textContent = "⏸ Stop";
+    const startVal = Number(scrubber.value) >= 1000 ? 0 : Number(scrubber.value);
+    const startMs = (startVal / 1000) * totalMs;
+    const t0 = performance.now();
+    const frame = (now) => {
+      const ms = startMs + ((now - t0) / FLY_MS) * totalMs;
+      if (ms >= totalMs) {
+        scrubber.value = 1000;
+        update(totalMs);
+        stopFly();
+        return;
+      }
+      scrubber.value = String((ms / totalMs) * 1000);
+      update(ms);
+      flyRAF = requestAnimationFrame(frame);
+    };
+    flyRAF = requestAnimationFrame(frame);
+  };
+
+  scrubber.value = "0";
+  update(0);
 }
 
 function escapeHtml(s) {

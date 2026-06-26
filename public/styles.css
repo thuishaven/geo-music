@@ -96,13 +96,34 @@ button:disabled { opacity: 0.5; cursor: progress; }
 .layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
 @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
 
+.map-col { display: flex; flex-direction: column; gap: 10px; }
 #map {
-  height: 560px;
+  height: 500px;
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--panel);
 }
 .leaflet-container { background: #0b0d11; }
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.player button { padding: 8px 14px; font-size: 0.85rem; white-space: nowrap; }
+#scrubber {
+  flex: 1;
+  min-width: 160px;
+  accent-color: var(--accent);
+  height: 4px;
+}
+.readout { width: 100%; color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.readout .rd-place { color: var(--text); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem; }
 
 .timeline {
   list-style: none;

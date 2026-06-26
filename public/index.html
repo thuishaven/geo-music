@@ -45,7 +45,14 @@
           <a id="open-spotify" class="spotify-link" target="_blank" rel="noopener">Open in Spotify ↗</a>
         </div>
         <div class="layout">
-          <div id="map"></div>
+          <div class="map-col">
+            <div id="map"></div>
+            <div id="player" class="player" hidden>
+              <button id="fly-btn" type="button" class="ghost">▶ Fly the route</button>
+              <input id="scrubber" type="range" min="0" max="1000" value="0" aria-label="Scrub the journey" />
+              <div id="playhead-readout" class="readout"></div>
+            </div>
+          </div>
           <ol id="timeline" class="timeline"></ol>
         </div>
       </section>
