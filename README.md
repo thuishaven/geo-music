@@ -59,14 +59,29 @@ All thresholds are tunable via env (see the table below and `.env.example`).
 
 ## Status & roadmap
 
-- **v1:** static, route-ordered playlist. **Spotify first**, Apple Music second.
-- Hosted on-prem first (Dokploy + Cloudflare Tunnel); a future
-  [Thuishaven](https://github.com/thuishaven/thuishaven) `media` pattern will
-  document the self-host recipe.
-- Live/GPS-reactive playback is a possible future direction, not part of v1.
+- **CLI** (Phase 0): build a route-ordered playlist from the terminal.
+- **Web app** (Phase 2): a multi-user web UI — connect your own Spotify, enter a route,
+  and get a **map of the journey with a track-by-track timeline** (when you'll hear what,
+  and where). `npm run serve`; deploy with the included `Dockerfile`.
+- **Next:** Apple Music as a second provider; a [Thuishaven](https://github.com/thuishaven/thuishaven)
+  `media` pattern documenting the self-host recipe. Live/GPS-reactive playback is a
+  possible future direction.
 
-See **[SPEC.md](SPEC.md)** for the full specification, data sources, architecture,
-and build plan.
+See **[SPEC.md](SPEC.md)** for the full specification and **[docs/deployment.md](docs/deployment.md)**
+for hosting (Dokploy + Cloudflare Tunnel).
+
+## Running the web app
+
+```bash
+cp .env.example .env   # fill in SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET
+npm install
+npm run serve          # → http://127.0.0.1:8080
+```
+
+Add `http://127.0.0.1:8080/auth/callback` to your Spotify app's **Redirect URIs**, open
+the page, click **Connect Spotify**, and build a playlist. Each visitor connects their
+own account (multi-user OAuth). For Docker/on-prem hosting see
+[docs/deployment.md](docs/deployment.md).
 
 ## Running the Phase 0 prototype
 
