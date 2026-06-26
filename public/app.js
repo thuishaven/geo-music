@@ -63,16 +63,35 @@ function renderResult(plan) {
   markers.forEach((m) => m.remove());
   markers = [];
 
-  const line = L.polyline(plan.route, { color: "#1db954", weight: 4, opacity: 0.85 }).addTo(map);
+  const line = L.polyline(plan.route, { color: "#1db954", weight: 3, opacity: 0.5 }).addTo(map);
   markers.push(line);
+
+  // A small dot per track, spread along the route by when you'll hear it.
+  const trackDots = [];
+  plan.tracks.forEach((t, i) => {
+    const dot = L.circleMarker([t.lat, t.lon], {
+      radius: 4,
+      weight: 0,
+      fillColor: "#1db954",
+      fillOpacity: 0.55,
+    })
+      .bindPopup(`<b>${escapeHtml(t.artist)}</b><br>${escapeHtml(t.title)}<br><small>${formatOffset(t.offsetMs)} in</small>`)
+      .addTo(map);
+    trackDots[i] = dot;
+    markers.push(dot);
+  });
+  window.__trackDots = trackDots;
+
+  // Larger labelled markers for the places.
   plan.places.forEach((p) => {
     const mk = L.circleMarker([p.lat, p.lon], {
       radius: 6,
-      color: "#1db954",
+      color: "#0f1115",
+      weight: 2,
       fillColor: "#1db954",
-      fillOpacity: 0.9,
+      fillOpacity: 1,
     })
-      .bindPopup(`<b>${p.name}</b>`)
+      .bindTooltip(p.name, { permanent: false })
       .addTo(map);
     markers.push(mk);
   });
@@ -89,10 +108,10 @@ function renderResult(plan) {
       timelineEl.querySelectorAll("li").forEach((x) => x.classList.remove("active"));
       li.classList.add("active");
       map.panTo([t.lat, t.lon]);
-      L.popup().setLatLng([t.lat, t.lon]).setContent(`<b>${escapeHtml(t.artist)}</b><br>${escapeHtml(t.title)}`).openOn(map);
+      const dot = window.__trackDots && window.__trackDots[i];
+      if (dot) dot.openPopup();
     };
     timelineEl.appendChild(li);
-    void i;
   });
 
   resultEl.scrollIntoView({ behavior: "smooth" });

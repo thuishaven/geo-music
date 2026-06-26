@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { geocode, reverseToPlace } from "./geo/geocode.js";
 import { getRoute } from "./geo/route.js";
-import { sampleWaypoints } from "./geo/waypoints.js";
+import { sampleWaypoints, routeInterpolator } from "./geo/waypoints.js";
 import type { Coord, ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace, getSpotifyArtistId } from "./origin/musicbrainz.js";
 import { resolveSegments, type Segment, type SearchLevel } from "./segments.js";
@@ -402,6 +402,15 @@ export async function buildPlaylist(
   await provider.addTracks(playlistId, playlist.map((t) => t.uri));
   const url = provider.playlistUrl(playlistId);
   const actualMs = playlist.reduce((sum, t) => sum + t.durationMs, 0);
+
+  // Spread each track along the route by the time you'll hear it (≈ drive time),
+  // so they flow the whole way instead of clustering on a few place markers.
+  const interp = routeInterpolator(route.points);
+  for (const t of planTracks) {
+    const at = interp((t.offsetMs + t.durationMs / 2) / (actualMs || 1));
+    t.lat = at.lat;
+    t.lon = at.lon;
+  }
 
   // Down-sample the route polyline to keep the map payload small (~200 points).
   const step = Math.max(1, Math.floor(route.points.length / 200));
