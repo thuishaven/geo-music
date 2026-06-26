@@ -1,164 +1,41 @@
-import { createServer } from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
+import { refreshToken, type TokenSet } from "./spotify-oauth.js";
 import type {
   MusicProvider,
   ProviderArtist,
   ProviderTrack,
 } from "./types.js";
 
-const ACCOUNTS = "https://accounts.spotify.com";
 const API = "https://api.spotify.com/v1";
-const SCOPES = "playlist-modify-public playlist-modify-private";
-const TOKEN_FILE = ".spotify-token.json";
 
-interface TokenSet {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number; // epoch ms
-}
-
-interface SpotifyTokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
-}
-
-function basicAuthHeader(): string {
-  const raw = `${config.spotify.clientId}:${config.spotify.clientSecret}`;
-  return `Basic ${Buffer.from(raw).toString("base64")}`;
-}
+/** Called whenever the access token is refreshed, so callers can persist it. */
+export type OnTokenRefresh = (token: TokenSet) => void | Promise<void>;
 
 export class SpotifyProvider implements MusicProvider {
   readonly name = "Spotify";
-  private token: TokenSet | null = null;
   private userId: string | null = null;
 
+  /**
+   * @param token   an already-obtained token set (from CLI cache or a web session)
+   * @param onRefresh persistence hook called when the token is refreshed
+   */
+  constructor(
+    private token: TokenSet,
+    private readonly onRefresh?: OnTokenRefresh,
+  ) {}
+
+  /** Verify the token works and capture the user id needed to create playlists. */
   async authenticate(): Promise<void> {
-    if (!config.spotify.clientId || !config.spotify.clientSecret) {
-      throw new Error(
-        "Missing SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET. Copy .env.example to .env " +
-          "and fill them in (or use --dry-run, which needs no Spotify credentials).",
-      );
-    }
-    this.token = (await this.loadCachedToken()) ?? (await this.runOAuthFlow());
     this.userId = await this.fetchUserId();
-  }
-
-  // --- OAuth (Authorization Code flow with loopback redirect) ---
-
-  private async loadCachedToken(): Promise<TokenSet | null> {
-    try {
-      const raw = await readFile(TOKEN_FILE, "utf8");
-      const cached = JSON.parse(raw) as TokenSet;
-      if (cached.expires_at > Date.now() + 60_000) return cached;
-      // Expired: refresh it.
-      return await this.refresh(cached.refresh_token);
-    } catch {
-      return null; // No cache yet.
-    }
-  }
-
-  private async runOAuthFlow(): Promise<TokenSet> {
-    const redirect = new URL(config.spotify.redirectUri);
-    const state = randomBytes(8).toString("hex");
-    const authUrl =
-      `${ACCOUNTS}/authorize?response_type=code` +
-      `&client_id=${encodeURIComponent(config.spotify.clientId)}` +
-      `&scope=${encodeURIComponent(SCOPES)}` +
-      `&redirect_uri=${encodeURIComponent(config.spotify.redirectUri)}` +
-      `&state=${state}`;
-
-    const code = await new Promise<string>((resolve, reject) => {
-      const server = createServer((req, res) => {
-        const reqUrl = new URL(req.url ?? "", `http://${req.headers.host}`);
-        if (reqUrl.pathname !== redirect.pathname) {
-          res.writeHead(404).end();
-          return;
-        }
-        const error = reqUrl.searchParams.get("error");
-        const returnedCode = reqUrl.searchParams.get("code");
-        const returnedState = reqUrl.searchParams.get("state");
-        res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(
-          `<html><body style="font-family:sans-serif">` +
-            `<h2>geo-music</h2><p>${error ? "Authorization failed." : "Authorized. You can close this tab."}</p>` +
-            `</body></html>`,
-        );
-        server.close();
-        if (error) return reject(new Error(`Spotify authorization error: ${error}`));
-        if (returnedState !== state) return reject(new Error("OAuth state mismatch."));
-        if (!returnedCode) return reject(new Error("No authorization code returned."));
-        resolve(returnedCode);
-      });
-      server.listen(Number(redirect.port) || 80, redirect.hostname, () => {
-        console.log("\nAuthorize geo-music in your browser:\n  " + authUrl + "\n");
-      });
-      server.on("error", reject);
-    });
-
-    return await this.exchangeCode(code);
-  }
-
-  private async exchangeCode(code: string): Promise<TokenSet> {
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: config.spotify.redirectUri,
-    });
-    const data = await this.tokenRequest(body);
-    const token: TokenSet = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token ?? "",
-      expires_at: Date.now() + data.expires_in * 1000,
-    };
-    await this.saveToken(token);
-    return token;
-  }
-
-  private async refresh(refreshToken: string): Promise<TokenSet> {
-    const body = new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    });
-    const data = await this.tokenRequest(body);
-    const token: TokenSet = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token ?? refreshToken,
-      expires_at: Date.now() + data.expires_in * 1000,
-    };
-    await this.saveToken(token);
-    return token;
-  }
-
-  private async tokenRequest(body: URLSearchParams): Promise<SpotifyTokenResponse> {
-    const res = await fetch(`${ACCOUNTS}/api/token`, {
-      method: "POST",
-      headers: {
-        Authorization: basicAuthHeader(),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body,
-    });
-    if (!res.ok) {
-      throw new Error(`Spotify token request failed: ${res.status} ${await res.text()}`);
-    }
-    return (await res.json()) as SpotifyTokenResponse;
-  }
-
-  private async saveToken(token: TokenSet): Promise<void> {
-    this.token = token;
-    await writeFile(TOKEN_FILE, JSON.stringify(token, null, 2), "utf8");
   }
 
   // --- Authenticated API helper ---
 
   private async api<T>(path: string, init: RequestInit = {}): Promise<T> {
-    if (!this.token) throw new Error("Not authenticated. Call authenticate() first.");
     for (let attempt = 0; attempt < 3; attempt++) {
       if (this.token.expires_at <= Date.now() + 30_000) {
-        this.token = await this.refresh(this.token.refresh_token);
+        this.token = await refreshToken(this.token.refresh_token);
+        await this.onRefresh?.(this.token);
       }
       const res = await fetch(`${API}${path}`, {
         ...init,

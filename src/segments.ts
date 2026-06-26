@@ -25,6 +25,8 @@ export interface Segment {
   key: string;
   /** Display name: the city, or the region/country it fell back to. */
   label: string;
+  /** Representative coordinate (first place in the segment), for the map. */
+  coord: import("./geo/types.js").Coord;
   /** Number of waypoint places this segment covers (its travel-time weight). */
   span: number;
   /** Levels to search, most specific first; widened only if under-filled. */
@@ -69,7 +71,7 @@ export async function resolveSegments(places: ResolvedPlace[]): Promise<Segment[
     if (prev && prev.key === key) {
       prev.span += 1;
     } else {
-      segments.push({ key, label, span: 1, levels });
+      segments.push({ key, label, coord: place.coord, span: 1, levels });
     }
   }
 

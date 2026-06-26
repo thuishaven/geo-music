@@ -17,6 +17,38 @@ export interface PipelineResult {
   segmentCount: number;
   targetMinutes: number;
   actualMinutes: number;
+  /** Rich plan for the web UI (map + timeline). */
+  plan: PlaylistPlan;
+}
+
+/** A single track placed on the journey, for the map + timeline. */
+export interface PlanTrack {
+  artist: string;
+  title: string;
+  uri: string;
+  durationMs: number;
+  /** Cumulative offset from the start of the playlist (≈ minutes into the drive). */
+  offsetMs: number;
+  /** Which segment (place) it belongs to. */
+  place: string;
+  /** Approximate coordinate where you'll be when it plays. */
+  lat: number;
+  lon: number;
+}
+
+/** Everything the web UI needs to render the journey. */
+export interface PlaylistPlan {
+  from: string;
+  to: string;
+  distanceKm: number;
+  durationMin: number;
+  playlistId: string;
+  url: string;
+  /** Down-sampled route polyline as [lat, lon] pairs for drawing. */
+  route: Array<[number, number]>;
+  /** Place markers in travel order. */
+  places: Array<{ name: string; lat: number; lon: number }>;
+  tracks: PlanTrack[];
 }
 
 function minutes(ms: number): number {
@@ -305,18 +337,35 @@ export async function buildPlaylist(
   const msPerPlace = targetMs / places.length;
 
   const playlist: ProviderTrack[] = [];
+  const planTracks: PlanTrack[] = [];
+  const placeMarkers: Array<{ name: string; lat: number; lon: number }> = [];
   const seen = new Set<string>();
   const seenTracks = new Set<string>();
   const levelCache = new Map<string, LevelCandidates>();
+  let offsetMs = 0;
 
   for (const segment of segments) {
     const budgetMs = msPerPlace * segment.span;
     const picked = await tracksForSegment(provider, segment, budgetMs, seen, seenTracks, levelCache);
-    playlist.push(...picked.map((p) => p.track));
 
     if (!picked.length) {
       console.log(`  ${segment.label}: no playable tracks (skipped)`);
       continue;
+    }
+    placeMarkers.push({ name: segment.label, lat: segment.coord.lat, lon: segment.coord.lon });
+    for (const { track } of picked) {
+      playlist.push(track);
+      planTracks.push({
+        artist: track.artistName,
+        title: track.name,
+        uri: track.uri,
+        durationMs: track.durationMs,
+        offsetMs,
+        place: segment.label,
+        lat: segment.coord.lat,
+        lon: segment.coord.lon,
+      });
+      offsetMs += track.durationMs;
     }
     const levels = [...new Set(picked.map((p) => p.level))].join("+");
     const placeMs = picked.reduce((s, p) => s + p.track.durationMs, 0);
@@ -331,14 +380,30 @@ export async function buildPlaylist(
   const description = `Artists from the places along the way, in travel order, sized to the drive. Built with geo-music.`;
   const playlistId = await provider.createPlaylist(title, description);
   await provider.addTracks(playlistId, playlist.map((t) => t.uri));
-
+  const url = provider.playlistUrl(playlistId);
   const actualMs = playlist.reduce((sum, t) => sum + t.durationMs, 0);
+
+  // Down-sample the route polyline to keep the map payload small (~200 points).
+  const step = Math.max(1, Math.floor(route.points.length / 200));
+  const routeLine = route.points.filter((_, i) => i % step === 0).map((p) => [p.lat, p.lon] as [number, number]);
+
   return {
     playlistId,
-    url: provider.playlistUrl(playlistId),
+    url,
     trackCount: playlist.length,
     segmentCount: segments.length,
     targetMinutes: minutes(targetMs),
     actualMinutes: minutes(actualMs),
+    plan: {
+      from,
+      to,
+      distanceKm: Math.round(route.distanceKm),
+      durationMin: minutes(route.durationSec * 1000),
+      playlistId,
+      url,
+      route: routeLine,
+      places: placeMarkers,
+      tracks: planTracks,
+    },
   };
 }

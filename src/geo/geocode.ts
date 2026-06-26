@@ -49,5 +49,6 @@ export async function reverseToPlace(coord: Coord): Promise<ResolvedPlace | null
     name,
     region: region && region !== name ? region : null,
     country: a.country ?? null,
+    coord,
   };
 }

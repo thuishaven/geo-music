@@ -18,4 +18,6 @@ export interface ResolvedPlace {
   name: string;
   region: string | null;
   country: string | null;
+  /** The waypoint coordinate this place was resolved from (for the map). */
+  coord: Coord;
 }

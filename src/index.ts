@@ -1,6 +1,6 @@
 import { buildPlaylist } from "./pipeline.js";
 import { previewRoute } from "./preview.js";
-import { SpotifyProvider } from "./providers/spotify.js";
+import { spotifyFromCli } from "./cli-auth.js";
 
 function usage(): never {
   console.error(`\ngeo-music — Phase 0 prototype\n\n` +
@@ -21,8 +21,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const provider = new SpotifyProvider();
-  await provider.authenticate();
+  const provider = await spotifyFromCli();
 
   const result = await buildPlaylist(provider, from, to);
 
