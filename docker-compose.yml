@@ -1,0 +1,17 @@
+services:
+  geo-music:
+    build: .
+    image: geo-music
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Required — from your Spotify app (owner account must have Premium).
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:?set SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:?set SPOTIFY_CLIENT_SECRET}
+      # Public origin the app is reached at; the OAuth callback is
+      # ${PUBLIC_BASE_URL}/auth/callback and must be registered in the Spotify app.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:8080}
+      # Optional tuning (see .env.example for the full set).
+      SPOTIFY_MARKET: ${SPOTIFY_MARKET:-NL}
+      PORT: "8080"
