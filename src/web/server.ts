@@ -84,6 +84,6 @@ app.post("/api/build", async (c) => {
 app.get("/", async (c) => c.html(await readFile("./public/index.html", "utf8")));
 app.use("/*", serveStatic({ root: "./public" }));
 
-serve({ fetch: app.fetch, port: config.web.port }, (info) => {
-  console.log(`geo-music web → http://localhost:${info.port}  (callback: ${CALLBACK})`);
+serve({ fetch: app.fetch, port: config.web.port, hostname: "0.0.0.0" }, (info) => {
+  console.log(`geo-music web → listening on 0.0.0.0:${info.port}  (callback: ${CALLBACK})`);
 });

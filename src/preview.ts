@@ -28,7 +28,8 @@ export async function previewRoute(from: string, to: string): Promise<void> {
       ` → target playlist ~${targetMin} min\n`,
   );
 
-  const waypoints = sampleWaypoints(route.points, config.waypointIntervalKm);
+  const interval = Math.max(config.waypointIntervalKm, route.distanceKm / config.maxPlaces);
+  const waypoints = sampleWaypoints(route.points, interval);
   const places: ResolvedPlace[] = [];
   for (const wp of waypoints) {
     if (places.length >= config.maxPlaces) break;

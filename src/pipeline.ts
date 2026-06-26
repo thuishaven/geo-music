@@ -318,8 +318,10 @@ export async function buildPlaylist(
   );
 
   // Reverse-geocode waypoints to places in travel order, de-duplicating
-  // consecutive repeats and capping the total to keep the run short.
-  const waypoints = sampleWaypoints(route.points, config.waypointIntervalKm);
+  // consecutive repeats. Widen the sampling interval on long routes so the
+  // MAX_PLACES cap spans the WHOLE trip instead of running out before the end.
+  const interval = Math.max(config.waypointIntervalKm, route.distanceKm / config.maxPlaces);
+  const waypoints = sampleWaypoints(route.points, interval);
   const places: ResolvedPlace[] = [];
   for (const wp of waypoints) {
     if (places.length >= config.maxPlaces) break;
