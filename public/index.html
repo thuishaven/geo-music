@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>geo-music — a soundtrack of place</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">geo-music</div>
+      <div id="account"></div>
+    </header>
+
+    <main>
+      <section class="intro">
+        <h1>Turn a road trip into a soundtrack of place.</h1>
+        <p>
+          Enter where you're driving from and to. We'll build a playlist of artists
+          <em>from the places you pass through</em>, in travel order, sized to the drive —
+          and show you on the map when you'll hear each track.
+        </p>
+      </section>
+
+      <form id="build-form" class="card" autocomplete="off">
+        <div class="fields">
+          <label>From <input id="from" placeholder="Amsterdam" required /></label>
+          <label>To <input id="to" placeholder="Paris" required /></label>
+        </div>
+        <button id="build-btn" type="submit">Build playlist</button>
+        <p class="hint" id="form-hint"></p>
+      </form>
+
+      <div id="status" class="status" hidden></div>
+
+      <section id="result" hidden>
+        <div class="result-head">
+          <div id="result-summary"></div>
+          <a id="open-spotify" class="spotify-link" target="_blank" rel="noopener">Open in Spotify ↗</a>
+        </div>
+        <div class="layout">
+          <div id="map"></div>
+          <ol id="timeline" class="timeline"></ol>
+        </div>
+      </section>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -63,6 +63,13 @@ export const config = {
   // hijack an obscure local. 0 effectively disables the loose fallback.
   looseFallbackMaxPop: num("LOOSE_FALLBACK_MAX_POP", 55),
   contact: env("CONTACT", "geo-music (https://github.com/thuishaven/geo-music)"),
+  web: {
+    // Port the web server listens on.
+    port: num("PORT", 8080),
+    // Public origin the app is reached at — used to build the OAuth callback.
+    // Locally use http://127.0.0.1:8080; in prod your https domain.
+    publicBaseUrl: env("PUBLIC_BASE_URL", "http://127.0.0.1:8080"),
+  },
 };
 
 export type Config = typeof config;
