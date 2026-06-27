@@ -2,6 +2,7 @@ import { config } from "./config.js";
 import { geocode, reverseToPlace } from "./geo/geocode.js";
 import { getRoute } from "./geo/route.js";
 import { sampleWaypoints, routeInterpolator } from "./geo/waypoints.js";
+import { mapConcurrent } from "./util/concurrent.js";
 import type { Coord, ResolvedPlace } from "./geo/types.js";
 import { findArtistsByPlace, getSpotifyArtistId } from "./origin/musicbrainz.js";
 import { resolveSegments, type Segment, type SearchLevel } from "./segments.js";
@@ -226,16 +227,22 @@ async function resolveLevel(
 
   const count = level.kind === "country" ? config.countryCandidates : config.artistCandidatesPerPlace;
   const artists = level.mbArtists ?? (await findArtistsByPlace(level.query, count));
+
+  // Resolve candidates in parallel (Spotify tolerates bursts; MusicBrainz link
+  // lookups inside stay rate-limited via the host throttle).
+  const resolved = await mapConcurrent(artists, 8, (a) =>
+    resolveCandidate(provider, a.mbid, a.name, linkBudget).then((m) => ({ a, m })),
+  );
+
   const out: LevelCandidates = [];
-  for (const a of artists) {
-    const match = await resolveCandidate(provider, a.mbid, a.name, linkBudget);
-    if (!match) continue;
-    if (match.artist.popularity < config.minArtistPopularity) continue; // drop obscure
-    if (isNonMusicArtist(match.artist.genres)) continue; // drop audiobooks/spoken word
+  for (const { a, m } of resolved) {
+    if (!m) continue;
+    if (m.artist.popularity < config.minArtistPopularity) continue; // drop obscure
+    if (isNonMusicArtist(m.artist.genres)) continue; // drop audiobooks/spoken word
     if (process.env.GM_DEBUG) {
-      console.error(`  [${level.query}] mb:"${a.name}" -> ${match.artist.name} [${match.tier}]`);
+      console.error(`  [${level.query}] mb:"${a.name}" -> ${m.artist.name} [${m.tier}]`);
     }
-    out.push({ artist: match.artist, level: level.label });
+    out.push({ artist: m.artist, level: level.label });
   }
   cache.set(level.query, out);
   return out;
@@ -291,24 +298,27 @@ async function tracksForSegment(
 ): Promise<TaggedTrack[]> {
   const candidates = await rankedCandidates(provider, segment, budgetMs, seen, cache);
 
-  // Fetch top tracks for the most popular artists until the budget is covered,
-  // capping classical/opera acts so country fallback doesn't drown the segment.
-  const perArtist: Array<{ tracks: ProviderTrack[]; level: string }> = [];
-  let estMs = 0;
+  // Pick the most popular artists to fill the slice (capping classical/opera),
+  // then fetch their top tracks in parallel. We over-select a little; the fill
+  // loop below trims to the exact budget.
+  const wanted = Math.ceil(budgetMs / AVG_SONG_MS) + 6;
+  const selected: Array<{ artist: ProviderArtist; level: string }> = [];
   let classicalUsed = 0;
   for (const c of candidates) {
-    if (estMs >= budgetMs) break;
+    if (selected.length >= wanted) break;
     if (isClassical(c.artist.genres)) {
       if (classicalUsed >= config.maxClassicalPerSegment) continue;
       classicalUsed++;
     }
-    const tracks = (await provider.getTopTracks(c.artist.id, config.maxTracksPerArtist)).filter(
-      (t) => t.popularity >= config.minTrackPopularity,
-    );
-    if (!tracks.length) continue;
-    perArtist.push({ tracks, level: c.level });
-    estMs += tracks.reduce((s, t) => s + t.durationMs, 0);
+    selected.push(c);
   }
+  const fetched = await mapConcurrent(selected, 8, async (c) => ({
+    level: c.level,
+    tracks: (await provider.getTopTracks(c.artist.id, config.maxTracksPerArtist)).filter(
+      (t) => t.popularity >= config.minTrackPopularity,
+    ),
+  }));
+  const perArtist = fetched.filter((f) => f.tracks.length);
 
   // Interleave breadth-first (every artist's #1 before anyone's #2) for variety;
   // artists are already in popularity order.

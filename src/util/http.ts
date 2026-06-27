@@ -6,18 +6,25 @@ import { config } from "../config.js";
  */
 const MIN_INTERVAL_MS = 1100;
 
-const lastCallByHost = new Map<string, number>();
+/** Next free slot (epoch ms) per host. */
+const nextSlotByHost = new Map<string, number>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Wait until at least MIN_INTERVAL_MS has passed since the last call to this host. */
+/**
+ * Reserve the next MIN_INTERVAL_MS-spaced slot for this host and wait for it.
+ * Concurrency-safe: the slot is claimed synchronously before any await, so
+ * concurrent callers are spaced out rather than firing together (keeping us
+ * within MusicBrainz/Nominatim's ~1 req/s even when callers run in parallel).
+ */
 async function throttle(host: string): Promise<void> {
-  const last = lastCallByHost.get(host) ?? 0;
-  const wait = MIN_INTERVAL_MS - (Date.now() - last);
+  const now = Date.now();
+  const slot = Math.max(now, nextSlotByHost.get(host) ?? 0);
+  nextSlotByHost.set(host, slot + MIN_INTERVAL_MS);
+  const wait = slot - now;
   if (wait > 0) await sleep(wait);
-  lastCallByHost.set(host, Date.now());
 }
 
 const userAgent = `geo-music/0.0 ( ${config.contact} )`;
