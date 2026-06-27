@@ -178,6 +178,11 @@ function setupPlayer(plan) {
   }).addTo(map);
   markers.push(playhead);
 
+  // For the "fly" camera: zoom in a couple levels and restore the overview after.
+  const routeBounds = L.latLngBounds(route);
+  const followZoom = Math.min(map.getBoundsZoom(routeBounds) + 2, 11);
+  const restoreOverview = () => map.fitBounds(routeBounds, { padding: [30, 30] });
+
   const trackIndexAt = (ms) => {
     let idx = 0;
     for (let i = 0; i < tracks.length; i++) {
@@ -201,9 +206,11 @@ function setupPlayer(plan) {
   }
 
   function stopFly() {
+    const wasFlying = Boolean(flyRAF);
     if (flyRAF) cancelAnimationFrame(flyRAF);
     flyRAF = null;
     flyBtn.textContent = "▶ Fly the route";
+    if (wasFlying) restoreOverview(); // back to the whole-route view
   }
 
   scrubber.oninput = () => {
@@ -228,6 +235,7 @@ function setupPlayer(plan) {
       }
       scrubber.value = String((ms / totalMs) * 1000);
       update(ms);
+      map.setView(at(ms / totalMs), followZoom, { animate: false }); // follow the playhead
       flyRAF = requestAnimationFrame(frame);
     };
     flyRAF = requestAnimationFrame(frame);
