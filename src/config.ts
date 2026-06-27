@@ -62,6 +62,9 @@ export const config = {
   // only if its popularity is at/below this, so a famous stranger (Drake) can't
   // hijack an obscure local. 0 effectively disables the loose fallback.
   looseFallbackMaxPop: num("LOOSE_FALLBACK_MAX_POP", 55),
+  // …and only if the result's name actually matches the candidate (Jaccard token
+  // similarity), so "Le Fléau" can't resolve to "MEAU". 1 = require exact tokens.
+  looseFallbackMinSimilarity: num("LOOSE_FALLBACK_MIN_SIMILARITY", 0.6),
   contact: env("CONTACT", "geo-music (https://github.com/thuishaven/geo-music)"),
   web: {
     // Port the web server listens on.

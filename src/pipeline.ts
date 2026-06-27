@@ -151,25 +151,60 @@ function trackKey(name: string): string {
  *   3. guarded loose fallback — the top fuzzy result, accepted ONLY if it isn't
  *      a famous stranger (popularity ceiling), to recover recall without Drakes.
  */
+/** Normalized token set of a name (lowercased, diacritics + punctuation stripped). */
+function nameTokens(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean),
+  );
+}
+
+/** Jaccard similarity of two names' token sets (0–1). */
+function nameSimilarity(a: string, b: string): number {
+  const A = nameTokens(a);
+  const B = nameTokens(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+
+type Resolved = { artist: ProviderArtist; tier: "strict" | "link" | "loose" } | null;
+
 async function resolveCandidate(
   provider: MusicProvider,
   mbid: string,
   name: string,
   linkBudget: { left: number },
-): Promise<ProviderArtist | null> {
+): Promise<Resolved> {
   const { strict, top } = await provider.searchArtist(name);
-  if (strict) return strict;
+  if (strict) return { artist: strict, tier: "strict" };
 
   if (config.useMbLinks && linkBudget.left > 0) {
     linkBudget.left--;
     const spotifyId = await getSpotifyArtistId(mbid);
     if (spotifyId) {
       const byId = await provider.getArtistById(spotifyId);
-      if (byId) return byId;
+      if (byId) return { artist: byId, tier: "link" };
     }
   }
 
-  if (top && top.popularity <= config.looseFallbackMaxPop) return top;
+  // Loose fallback: accept the top fuzzy result only if it isn't a famous
+  // stranger (popularity ceiling) AND its name genuinely matches the candidate
+  // (similarity guard) — otherwise it maps obscure locals onto unrelated artists.
+  if (
+    top &&
+    top.popularity <= config.looseFallbackMaxPop &&
+    nameSimilarity(name, top.name) >= config.looseFallbackMinSimilarity
+  ) {
+    return { artist: top, tier: "loose" };
+  }
   return null;
 }
 
@@ -195,9 +230,12 @@ async function resolveLevel(
   for (const a of artists) {
     const match = await resolveCandidate(provider, a.mbid, a.name, linkBudget);
     if (!match) continue;
-    if (match.popularity < config.minArtistPopularity) continue; // drop obscure
-    if (isNonMusicArtist(match.genres)) continue; // drop audiobooks/spoken word
-    out.push({ artist: match, level: level.label });
+    if (match.artist.popularity < config.minArtistPopularity) continue; // drop obscure
+    if (isNonMusicArtist(match.artist.genres)) continue; // drop audiobooks/spoken word
+    if (process.env.GM_DEBUG) {
+      console.error(`  [${level.query}] mb:"${a.name}" -> ${match.artist.name} [${match.tier}]`);
+    }
+    out.push({ artist: match.artist, level: level.label });
   }
   cache.set(level.query, out);
   return out;
