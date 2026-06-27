@@ -42,7 +42,7 @@ export const config = {
   // Deeper pull at country level: famous national acts sit below a wall of
   // classical composers in MusicBrainz (Falco #19, DJ Ötzi #40 for Austria),
   // so we look further down to surface them.
-  countryCandidates: num("COUNTRY_CANDIDATES", 45),
+  countryCandidates: num("COUNTRY_CANDIDATES", 80),
   // Drop artists below this Spotify popularity (0-100) to cut obscure noise
   // (bird recordings, audition-show filler, zero-play bootlegs).
   minArtistPopularity: num("MIN_ARTIST_POPULARITY", 25),
