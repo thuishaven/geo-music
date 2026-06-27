@@ -115,6 +115,15 @@ Spotify credentials.
 > A non-Premium owner gets `403 Active premium subscription required for the owner of the
 > app` on the first call. Subscription changes can take a few hours to propagate.
 
+> **This is a self-host-for-your-circle tool, by design.** A Spotify app starts in
+> **Development Mode**, where only the owner plus **up to 25 allow-listed accounts** (add
+> their Spotify emails under *Users and Access*) can connect. Lifting that needs Spotify's
+> **Extended Quota Mode**, which now requires **250k monthly active users and a registered
+> business** — out of reach for a hobby project. So there's no realistic "public service
+> for anyone"; instead, you run your own instance for ~25 people, and others
+> [self-host their own](docs/deployment.md) (each with their own Spotify app and its own
+> 25-user budget).
+
 Output is an ordered playlist whose artists march geographically from start to end,
 **sized so its total play time is roughly the driving time**. Want to see what it would
 build without creating anything? Add `--dry-run` (needs no Spotify credentials):
