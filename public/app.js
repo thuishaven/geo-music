@@ -40,6 +40,21 @@ async function refreshAccount() {
   }
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Poll a build job until it finishes, updating the status with elapsed time. */
+async function pollBuild(jobId, started) {
+  for (;;) {
+    await sleep(3000);
+    const r = await fetch(`/api/build/${jobId}`);
+    const d = await r.json();
+    if (!r.ok || d.status === "error") throw new Error(d.error || "Build failed.");
+    if (d.status === "done") return d.plan;
+    const secs = Math.round((Date.now() - started) / 1000);
+    setStatus(`Building your playlist… ${secs}s (routing, local artists, ranking — a few minutes is normal).`);
+  }
+}
+
 function setStatus(text, isError = false) {
   statusEl.hidden = !text;
   statusEl.textContent = text || "";
@@ -257,7 +272,8 @@ form.addEventListener("submit", async (e) => {
 
   buildBtn.disabled = true;
   resultEl.hidden = true;
-  setStatus("Routing, finding local artists, and building your playlist… this takes a minute or two.");
+  const started = Date.now();
+  setStatus("Routing, finding local artists, and building your playlist… this takes a few minutes.");
   try {
     const res = await fetch("/api/build", {
       method: "POST",
@@ -266,8 +282,9 @@ form.addEventListener("submit", async (e) => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    const plan = await pollBuild(data.jobId, started);
     setStatus("");
-    renderResult(data);
+    renderResult(plan);
   } catch (err) {
     setStatus(err.message, true);
   } finally {

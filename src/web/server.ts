@@ -9,6 +9,7 @@ import { authorizeUrl, exchangeCode } from "../providers/spotify-oauth.js";
 import { SpotifyProvider } from "../providers/spotify.js";
 import { buildPlaylist } from "../pipeline.js";
 import { createSession, getSession } from "./sessions.js";
+import { createJob, getJob } from "./jobs.js";
 
 const CALLBACK = `${config.web.publicBaseUrl}/auth/callback`;
 const COOKIE = "gm_sid";
@@ -57,6 +58,8 @@ app.get("/api/me", (c) => {
   return c.json({ connected: Boolean(session?.token) });
 });
 
+// Start a build as a background job and return its id immediately — the build
+// runs for minutes, longer than a proxied connection stays open.
 app.post("/api/build", async (c) => {
   const session = getSession(getCookie(c, COOKIE));
   if (!session?.token) return c.json({ error: "Connect Spotify first." }, 401);
@@ -69,14 +72,28 @@ app.post("/api/build", async (c) => {
   const provider = new SpotifyProvider(session.token, (t) => {
     session.token = t; // persist refreshed tokens back to the session
   });
-  try {
-    await provider.authenticate();
-    const result = await buildPlaylist(provider, from, to);
-    return c.json(result.plan);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return c.json({ error: message }, 500);
-  }
+  const { id, job } = createJob(Date.now());
+  void (async () => {
+    try {
+      await provider.authenticate();
+      const result = await buildPlaylist(provider, from, to);
+      job.status = "done";
+      job.plan = result.plan;
+    } catch (err) {
+      job.status = "error";
+      job.error = err instanceof Error ? err.message : String(err);
+    }
+  })();
+  return c.json({ jobId: id }, 202);
+});
+
+// Poll a build job.
+app.get("/api/build/:id", (c) => {
+  const job = getJob(c.req.param("id"));
+  if (!job) return c.json({ error: "Unknown or expired job." }, 404);
+  if (job.status === "running") return c.json({ status: "running" });
+  if (job.status === "error") return c.json({ status: "error", error: job.error });
+  return c.json({ status: "done", plan: job.plan });
 });
 
 // --- Static frontend ---
