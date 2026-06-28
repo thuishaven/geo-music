@@ -4,21 +4,24 @@ import { refreshToken, type TokenSet } from "../src/providers/spotify-oauth.js";
 import { buildPlaylist } from "../src/pipeline.js";
 
 /**
- * Pre-generate the public demo gallery: build a handful of iconic routes as
+ * Pre-generate the public demo gallery: build the routes in demo-routes.json as
  * PUBLIC playlists (so the Spotify embed works for anyone) and save each plan to
  * public/demo/<slug>.json, plus an index. Run with the CLI's cached token:
  *
- *   npx tsx scripts/build-demos.ts
+ *   npm run demos        (after npm start has cached a token)
+ *
+ * Curate your own gallery by editing demo-routes.json, then set
+ * ENABLE_DEMO_GALLERY=true to show it on the homepage.
  */
-const ROUTES: Array<{ slug: string; from: string; to: string }> = [
-  { slug: "amsterdam-paris", from: "Amsterdam", to: "Paris" },
-  { slug: "lisbon-porto", from: "Lisbon", to: "Porto" },
-  { slug: "munich-milan", from: "Munich", to: "Milan" },
-  { slug: "berlin-prague", from: "Berlin", to: "Prague" },
-];
+type Route = { slug: string; from: string; to: string };
 
 const TOKEN_FILE = ".spotify-token.json";
+const ROUTES_FILE = "demo-routes.json";
 const DEMO_DIR = "public/demo";
+
+async function loadRoutes(): Promise<Route[]> {
+  return JSON.parse(await readFile(ROUTES_FILE, "utf8")) as Route[];
+}
 
 async function loadProvider(): Promise<SpotifyProvider> {
   let token = JSON.parse(await readFile(TOKEN_FILE, "utf8")) as TokenSet;
@@ -32,10 +35,11 @@ async function loadProvider(): Promise<SpotifyProvider> {
 
 async function main(): Promise<void> {
   const provider = await loadProvider();
+  const routes = await loadRoutes();
   await mkdir(DEMO_DIR, { recursive: true });
   const index: Array<{ slug: string; from: string; to: string; playlistId: string; tracks: number }> = [];
 
-  for (const route of ROUTES) {
+  for (const route of routes) {
     console.log(`\n=== ${route.from} → ${route.to} ===`);
     try {
       const result = await buildPlaylist(provider, route.from, route.to, { public: true });

@@ -12,6 +12,7 @@
     "serve": "tsx src/web/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "serve:prod": "node dist/web/server.js",
+    "demos": "tsx scripts/build-demos.ts",
     "auth": "tsx scripts/spotify-auth.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -22,7 +22,12 @@ function formatOffset(ms) {
 }
 
 async function refreshAccount() {
-  const { connected } = await fetch("/api/me").then((r) => r.json());
+  const me = await fetch("/api/me").then((r) => r.json());
+  const { connected } = me;
+  if (me.demoGallery && !window.__galleryLoaded) {
+    window.__galleryLoaded = true;
+    loadGallery();
+  }
   if (connected) {
     accountEl.innerHTML = `<button class="ghost" id="logout">Disconnect</button>`;
     $("#logout").onclick = async () => {
@@ -337,4 +342,3 @@ if (params.get("error")) {
 }
 
 refreshAccount();
-loadGallery();

@@ -1,0 +1,7 @@
+[
+  { "slug": "amsterdam-rome", "from": "Amsterdam", "to": "Rome" },
+  { "slug": "hamburg-barcelona", "from": "Hamburg", "to": "Barcelona" },
+  { "slug": "paris-vienna", "from": "Paris", "to": "Vienna" },
+  { "slug": "munich-milan", "from": "Munich", "to": "Milan" },
+  { "slug": "amsterdam-paris", "from": "Amsterdam", "to": "Paris" }
+]

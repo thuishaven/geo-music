@@ -72,6 +72,9 @@ export const config = {
     // Public origin the app is reached at — used to build the OAuth callback.
     // Locally use http://127.0.0.1:8080; in prod your https domain.
     publicBaseUrl: env("PUBLIC_BASE_URL", "http://127.0.0.1:8080"),
+    // Show the pre-built demo gallery on the homepage (opt-in). Curate routes in
+    // demo-routes.json and generate with `npm run demos`.
+    enableDemoGallery: bool("ENABLE_DEMO_GALLERY", false),
   },
 };
 

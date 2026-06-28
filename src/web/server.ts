@@ -55,7 +55,10 @@ app.post("/auth/logout", (c) => {
 
 app.get("/api/me", (c) => {
   const session = getSession(getCookie(c, COOKIE));
-  return c.json({ connected: Boolean(session?.token) });
+  return c.json({
+    connected: Boolean(session?.token),
+    demoGallery: config.web.enableDemoGallery,
+  });
 });
 
 // Start a build as a background job and return its id immediately — the build

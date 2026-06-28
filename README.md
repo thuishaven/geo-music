@@ -132,6 +132,23 @@ build without creating anything? Add `--dry-run` (needs no Spotify credentials):
 npm start -- --dry-run "Amsterdam" "Paris"
 ```
 
+### Demo gallery (optional, opt-in)
+
+A login-free gallery of pre-built journeys you can show off — visitors see the map,
+timeline, and fly-through, and play the playlist via an embedded Spotify player, **with no
+Spotify connection** (so it works for any audience, sidestepping the 25-user cap). Curate
+your own:
+
+```bash
+# edit demo-routes.json (slug/from/to), then with a cached token:
+npm run demos                 # builds each as a PUBLIC playlist → public/demo/*.json
+ENABLE_DEMO_GALLERY=true npm run serve
+```
+
+The generated playlists are *yours* (created on your account) — `public/demo/` is
+git-ignored, so they don't ship with the repo or to self-hosters. The gallery only appears
+when `ENABLE_DEMO_GALLERY=true` and demos exist.
+
 ### Tuning (env, all optional)
 
 | Var | Default | Effect |
