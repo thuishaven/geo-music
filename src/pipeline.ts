@@ -370,6 +370,7 @@ export async function buildPlaylist(
   provider: MusicProvider,
   from: string,
   to: string,
+  opts: { public?: boolean } = {},
 ): Promise<PipelineResult> {
   console.log(`\nRouting ${from} → ${to} ...`);
   const start = await geocode(from);
@@ -446,7 +447,7 @@ export async function buildPlaylist(
 
   const title = `geo-music: ${from} → ${to}`;
   const description = `Artists from the places along the way, in travel order, sized to the drive. Built with geo-music.`;
-  const playlistId = await provider.createPlaylist(title, description);
+  const playlistId = await provider.createPlaylist(title, description, opts.public ?? false);
   await provider.addTracks(playlistId, playlist.map((t) => t.uri));
   const url = provider.playlistUrl(playlistId);
   const actualMs = playlist.reduce((sum, t) => sum + t.durationMs, 0);

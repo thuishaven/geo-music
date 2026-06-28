@@ -129,8 +129,45 @@ function renderResult(plan) {
     timelineEl.appendChild(li);
   });
 
+  // Embedded Spotify player (works for anyone on public playlists — the demos).
+  const embedEl = $("#embed");
+  embedEl.innerHTML = plan.playlistId
+    ? `<iframe title="Spotify player" style="border-radius:12px" src="https://open.spotify.com/embed/playlist/${plan.playlistId}?theme=0" width="100%" height="352" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>`
+    : "";
+
   setupPlayer(plan);
   resultEl.scrollIntoView({ behavior: "smooth" });
+}
+
+/** Load the pre-built demo journeys into the gallery (no login required). */
+async function loadGallery() {
+  try {
+    const demos = await fetch("/demo/index.json").then((r) => (r.ok ? r.json() : []));
+    if (!demos.length) return;
+    const gallery = $("#gallery");
+    const cards = $("#gallery-cards");
+    gallery.hidden = false;
+    cards.innerHTML = "";
+    demos.forEach((d) => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "demo-card";
+      card.innerHTML = `<span class="route">${escapeHtml(d.from)} → ${escapeHtml(d.to)}</span><span class="meta">${d.tracks} tracks · play & explore</span>`;
+      card.onclick = async () => {
+        setStatus("Loading demo…");
+        try {
+          const plan = await fetch(`/demo/${d.slug}.json`).then((r) => r.json());
+          setStatus("");
+          renderResult(plan);
+        } catch {
+          setStatus("Could not load that demo.", true);
+        }
+      };
+      cards.appendChild(card);
+    });
+  } catch {
+    /* no gallery; ignore */
+  }
 }
 
 /** Haversine distance (km) between two [lat, lon] points. */
@@ -300,3 +337,4 @@ if (params.get("error")) {
 }
 
 refreshAccount();
+loadGallery();

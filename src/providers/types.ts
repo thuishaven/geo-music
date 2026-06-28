@@ -54,7 +54,7 @@ export interface MusicProvider {
   getArtistGenres(ids: string[]): Promise<Map<string, string[]>>;
 
   /** Create an empty playlist and return its id. */
-  createPlaylist(name: string, description: string): Promise<string>;
+  createPlaylist(name: string, description: string, isPublic?: boolean): Promise<string>;
 
   /** Append tracks (by uri) to a playlist. */
   addTracks(playlistId: string, trackUris: string[]): Promise<void>;

@@ -146,11 +146,11 @@ export class SpotifyProvider implements MusicProvider {
     return out;
   }
 
-  async createPlaylist(name: string, description: string): Promise<string> {
+  async createPlaylist(name: string, description: string, isPublic = false): Promise<string> {
     if (!this.userId) throw new Error("No user id; authenticate() first.");
     const playlist = await this.api<{ id: string }>(`/users/${this.userId}/playlists`, {
       method: "POST",
-      body: JSON.stringify({ name, description, public: false }),
+      body: JSON.stringify({ name, description, public: isPublic }),
     });
     return playlist.id;
   }

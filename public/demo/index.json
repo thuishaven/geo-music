@@ -1,0 +1,30 @@
+[
+  {
+    "slug": "amsterdam-paris",
+    "from": "Amsterdam",
+    "to": "Paris",
+    "playlistId": "2r7evfLoNQpNdLlDgdIdK4",
+    "tracks": 56
+  },
+  {
+    "slug": "lisbon-porto",
+    "from": "Lisbon",
+    "to": "Porto",
+    "playlistId": "5auMp36gNpi64STwkzjpiO",
+    "tracks": 19
+  },
+  {
+    "slug": "munich-milan",
+    "from": "Munich",
+    "to": "Milan",
+    "playlistId": "0L6WJCN1z6uhqcehAaRxf1",
+    "tracks": 40
+  },
+  {
+    "slug": "berlin-prague",
+    "from": "Berlin",
+    "to": "Prague",
+    "playlistId": "1uGTS4syrl7kfdIJnp9V3S",
+    "tracks": 18
+  }
+]
