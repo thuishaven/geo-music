@@ -99,6 +99,16 @@ function isNonMusicArtist(genres: string[]): boolean {
   return genres.some((g) => NON_MUSIC_GENRES.some((n) => g.includes(n)));
 }
 
+/** Brutal extreme-metal subgenres (NOT heavy metal / hard rock, which we keep). */
+const EXTREME_METAL_GENRES = [
+  "deathcore", "grindcore", "goregrind", "slam metal", "slamming death",
+  "brutal death", "pornogrind",
+];
+
+function isExtremeMetal(genres: string[]): boolean {
+  return genres.some((g) => EXTREME_METAL_GENRES.some((m) => g.includes(m)));
+}
+
 /**
  * Title patterns marking a track as non-music (audiobook/audio-drama chapters,
  * untitled "Track 01"). Kept narrow so real songs — e.g. "Oxygène, Pt. 4" or a
@@ -239,6 +249,7 @@ async function resolveLevel(
     if (!m) continue;
     if (m.artist.popularity < config.minArtistPopularity) continue; // drop obscure
     if (isNonMusicArtist(m.artist.genres)) continue; // drop audiobooks/spoken word
+    if (config.excludeExtremeMetal && isExtremeMetal(m.artist.genres)) continue; // tonal misfit
     if (process.env.GM_DEBUG) {
       console.error(`  [${level.query}] mb:"${a.name}" -> ${m.artist.name} [${m.tier}]`);
     }
@@ -312,12 +323,17 @@ async function tracksForSegment(
     }
     selected.push(c);
   }
-  const fetched = await mapConcurrent(selected, 8, async (c) => ({
-    level: c.level,
-    tracks: (await provider.getTopTracks(c.artist.id, config.maxTracksPerArtist)).filter(
-      (t) => t.popularity >= config.minTrackPopularity,
-    ),
-  }));
+  const fetched = await mapConcurrent(selected, 8, async (c) => {
+    // Famous artists may get a 2nd track; obscure ones get one (variety > depth).
+    const perArtist =
+      c.artist.popularity >= config.secondTrackMinPopularity ? config.maxTracksPerArtist : 1;
+    return {
+      level: c.level,
+      tracks: (await provider.getTopTracks(c.artist.id, perArtist)).filter(
+        (t) => t.popularity >= config.minTrackPopularity,
+      ),
+    };
+  });
   const perArtist = fetched.filter((f) => f.tracks.length);
 
   // Interleave breadth-first (every artist's #1 before anyone's #2) for variety;
@@ -339,7 +355,11 @@ async function tracksForSegment(
     if (excludeClassical && looksClassical(t)) return true;
     return t.artistIds.some((id) => {
       const g = creditGenres.get(id) ?? [];
-      return isNonMusicArtist(g) || (excludeClassical && isClassical(g));
+      return (
+        isNonMusicArtist(g) ||
+        (excludeClassical && isClassical(g)) ||
+        (config.excludeExtremeMetal && isExtremeMetal(g))
+      );
     });
   };
 

@@ -51,6 +51,12 @@ export const config = {
   minTrackPopularity: num("MIN_TRACK_POPULARITY", 20),
   // Cap on tracks taken from a single artist, so no one act dominates a place.
   maxTracksPerArtist: num("MAX_TRACKS_PER_ARTIST", 2),
+  // Only give an artist a 2nd track if they're at least this popular — so sparse
+  // segments get variety, not the same obscure act twice.
+  secondTrackMinPopularity: num("SECOND_TRACK_MIN_POPULARITY", 50),
+  // Drop brutal extreme-metal (deathcore/grindcore/goregrind/slam) — tonally
+  // jarring on a road trip. Heavy metal / hard rock are kept. Set false to allow.
+  excludeExtremeMetal: bool("EXCLUDE_EXTREME_METAL", true),
   // Cap on classical/opera artists per segment. 0 = exclude classical entirely
   // (default — it's mostly country-level tagging noise and off-vibe for a drive).
   maxClassicalPerSegment: num("MAX_CLASSICAL_PER_SEGMENT", 0),
